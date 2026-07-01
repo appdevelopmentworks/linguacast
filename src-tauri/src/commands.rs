@@ -511,6 +511,16 @@ pub async fn dub_video(
     }
 }
 
+// --- Session 7: QR delivery ---
+
+#[tauri::command]
+pub async fn share_file(
+    delivery: State<'_, Arc<crate::delivery::DeliveryState>>,
+    path: String,
+) -> Result<crate::delivery::ShareInfo, String> {
+    crate::delivery::share_file(delivery.inner().clone(), path).await
+}
+
 // --- Session 2: transcription (proxy to the sidecar STT stage) ---
 
 #[derive(Serialize, Deserialize)]

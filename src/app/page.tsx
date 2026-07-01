@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   checkDependencies,
   dubVideo,
@@ -13,6 +14,7 @@ import {
   pingSidecar,
   prepareMedia,
   saveSettings,
+  shareFile,
   summarizeScript,
   synthesizeScript,
   tierLabel,
@@ -28,6 +30,7 @@ import {
   type MediaMeta,
   type Presets,
   type Settings,
+  type ShareInfo,
   type SidecarHealth,
   type SummarizeResult,
   type SynthesizeResult,
@@ -63,6 +66,7 @@ export default function Home() {
   const [tts, setTts] = useState<TtsStatus | null>(null);
   const [audio, setAudio] = useState<SynthesizeResult | null>(null);
   const [dub, setDub] = useState<DubResult | null>(null);
+  const [share, setShare] = useState<ShareInfo | null>(null);
 
   const [openChannel, setOpenChannel] = useState<string | null>(null);
   const [uploads, setUploads] = useState<VideoEntry[]>([]);
@@ -146,6 +150,16 @@ export default function Home() {
     sp.styles.map((st) => ({ id: st.id, label: `${sp.name}（${st.name}）` })),
   );
 
+  const runShare = useCallback(async (path: string) => {
+    setError(null);
+    setShare(null);
+    try {
+      setShare(await shareFile(path));
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
   // Local model choices from both local tiers (Ollama first, then LM Studio).
   const modelChoices = (() => {
     const list: string[] = [];
@@ -177,6 +191,7 @@ export default function Home() {
     setScript(null);
     setAudio(null);
     setDub(null);
+    setShare(null);
     setProgress("開始しています…");
     try {
       setJob(await prepareMedia(url.trim()));
@@ -579,6 +594,13 @@ export default function Home() {
           <div className="artifact-row">
             <span className="artifact-label">音声ファイル</span>
             <code className="path">{audio.audio_path}</code>
+            <button
+              className="start-btn"
+              onClick={() => void runShare(audio.audio_path)}
+              disabled={busy}
+            >
+              📱 QRで送る
+            </button>
           </div>
         </section>
       )}
@@ -639,11 +661,51 @@ export default function Home() {
             <div className="artifact-row">
               <span className="artifact-label">吹き替え動画</span>
               <code className="path">{dub.dubbed_video_path}</code>
+              <button
+                className="start-btn"
+                onClick={() => dub.dubbed_video_path && void runShare(dub.dubbed_video_path)}
+                disabled={busy}
+              >
+                📱 QRで送る
+              </button>
             </div>
           )}
           <div className="artifact-row">
             <span className="artifact-label">日本語トラック</span>
             <code className="path">{dub.dubbed_audio_path}</code>
+            <button
+              className="start-btn"
+              onClick={() => void runShare(dub.dubbed_audio_path)}
+              disabled={busy}
+            >
+              📱 QRで送る
+            </button>
+          </div>
+        </section>
+      )}
+
+      {share && (
+        <section className="media-card">
+          <div className="media-card-head">
+            <span className="section-label">QRダウンロード</span>
+            <span className="routing-badge routing-short">有効期限 {share.expires_min} 分</span>
+          </div>
+          <div className="qr-row">
+            <div className="qr-box">
+              <QRCodeSVG value={share.url} size={180} marginSize={2} />
+            </div>
+            <div className="qr-info">
+              <div className="media-title">{share.filename}</div>
+              <div className="qr-url">{share.url}</div>
+              <p className="mode-note">
+                同一 Wi-Fi / LAN 上のスマホでこの QR
+                を読み取ると、ブラウザで再生・ダウンロードできます（シーク再生対応）。
+              </p>
+              <p className="mode-note">
+                ※ 初回は Windows
+                ファイアウォールの確認が表示される場合があります。「プライベートネットワーク」で許可してください。
+              </p>
+            </div>
           </div>
         </section>
       )}

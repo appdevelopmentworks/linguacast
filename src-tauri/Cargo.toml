@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Turn foreign-language audio into Japanese audio, local-first with cloud fallbacks."
 authors = ["linguacast"]
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.82"
 
 # The library target is what Tauri (and the mobile bindings) link against.
 [lib]
@@ -23,3 +23,7 @@ tokio = { version = "1", features = ["process", "time", "rt-multi-thread", "macr
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 keyring = { version = "3", features = ["windows-native", "apple-native"] }
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+local-ip-address = "0.6"

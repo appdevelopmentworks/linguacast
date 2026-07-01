@@ -144,6 +144,14 @@ export type DubResult = {
   fits: SegmentFit[];
 };
 
+export type ShareInfo = {
+  url: string;
+  filename: string;
+  lan_ip: string;
+  port: number;
+  expires_min: number;
+};
+
 export type ProgressEvent = {
   job_id?: string;
   stage: string;
@@ -233,6 +241,10 @@ export function dubVideo(
   sourceUrl: string,
 ): Promise<DubResult> {
   return invoke<DubResult>("dub_video", { translatedSrtPath, workDir, sourceUrl });
+}
+
+export function shareFile(path: string): Promise<ShareInfo> {
+  return invoke<ShareInfo>("share_file", { path });
 }
 
 export const FIT_METHOD_LABELS: Record<string, string> = {

@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod delivery;
 mod deps;
 mod external;
 mod media;
@@ -18,6 +19,8 @@ pub fn run() {
             // The sidecar manager owns the child process lifecycle and resolved port.
             let manager = Arc::new(SidecarManager::new());
             app.manage(manager.clone());
+            // Delivery server state (bound lazily on first QR share).
+            app.manage(Arc::new(delivery::DeliveryState::default()));
 
             // Spawn the FastAPI sidecar and health-check it in the background so the
             // window opens immediately. Per the fallback contract, a failed start is
@@ -51,7 +54,8 @@ pub fn run() {
             commands::synthesize_script,
             commands::set_google_tts_key,
             commands::has_google_tts_key,
-            commands::dub_video
+            commands::dub_video,
+            commands::share_file
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
