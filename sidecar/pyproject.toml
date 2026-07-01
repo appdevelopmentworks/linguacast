@@ -7,16 +7,18 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
+    "srt>=3.5",
 ]
 
-# Heavy engine dependencies are deferred (CLAUDE.md: torch/CUDA installed lazily).
-# These groups are populated in their respective sessions and installed on demand
-# via `uv sync --extra <group>`.
+# Heavy engine dependencies are deferred (CLAUDE.md: heavy deps installed lazily).
+# Installed on demand via `uv sync --extra <group>` (see CLAUDE.md Commands).
 [project.optional-dependencies]
-stt = []
+# faster-whisper (CTranslate2) — Windows/Linux + NVIDIA. Does not require torch.
+stt = ["faster-whisper>=1.1"]
+# CUDA runtime libs (cuBLAS/cuDNN) for CTranslate2 GPU execution on Windows.
+cuda = ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]
 llm = []
 tts = []
-cuda = []
 
 # Application (not a distributable package): `uv run` executes `app.main:app`
 # from this directory without a build backend.

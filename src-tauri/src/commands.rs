@@ -4,9 +4,10 @@
 //! these commands and Rust proxies over internal HTTP.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::sidecar::SidecarManager;
 
@@ -121,4 +122,72 @@ pub fn get_presets(app: tauri::AppHandle) -> Result<crate::config::Presets, Stri
 #[tauri::command]
 pub fn save_presets(app: tauri::AppHandle, presets: crate::config::Presets) -> Result<(), String> {
     crate::config::save_presets(&app, &presets)
+}
+
+// --- Session 2: transcription (proxy to the sidecar STT stage) ---
+
+#[derive(Serialize, Deserialize)]
+pub struct SttSegment {
+    start: f64,
+    end: f64,
+    text: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TranscribeResult {
+    language: String,
+    duration: f64,
+    backend: String,
+    device: String,
+    model: String,
+    segment_count: u32,
+    srt_path: Option<String>,
+    segments: Vec<SttSegment>,
+}
+
+#[tauri::command]
+pub async fn transcribe(
+    app: tauri::AppHandle,
+    manager: State<'_, Arc<SidecarManager>>,
+    audio_path: String,
+    output_dir: String,
+    model_size: Option<String>,
+) -> Result<TranscribeResult, String> {
+    let _ = app.emit(
+        "linguacast://progress",
+        serde_json::json!({
+            "stage": "stt",
+            "message": "文字起こし中…（初回はモデルの読み込みに時間がかかります）",
+        }),
+    );
+
+    let url = format!("{}/stt/transcribe", manager.base_url());
+    let body = serde_json::json!({
+        "audio_path": audio_path,
+        "output_dir": output_dir,
+        "model_size": model_size.unwrap_or_else(|| "large-v3".to_string()),
+    });
+
+    // Transcription can run for many minutes on long videos.
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(6 * 3600))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+
+    if resp.status().is_success() {
+        resp.json::<TranscribeResult>()
+            .await
+            .map_err(|e| format!("invalid transcription response: {e}"))
+    } else {
+        let status = resp.status();
+        let detail = resp.text().await.unwrap_or_default();
+        Err(format!("transcription failed ({status}): {detail}"))
+    }
 }

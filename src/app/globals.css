@@ -277,6 +277,33 @@ code {
   color: var(--text);
 }
 
+.transcript-preview {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.transcript-line {
+  display: flex;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.transcript-time {
+  flex-shrink: 0;
+  width: 56px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.transcript-more {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 /* --- presets --- */
 .presets {
   margin-top: 8px;

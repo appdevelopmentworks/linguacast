@@ -37,7 +37,8 @@ pub fn run() {
             commands::prepare_media,
             commands::list_channel_uploads,
             commands::get_presets,
-            commands::save_presets
+            commands::save_presets,
+            commands::transcribe
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

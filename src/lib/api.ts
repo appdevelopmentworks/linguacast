@@ -60,8 +60,21 @@ export type PresetChannel = { label: string; url: string };
 export type PresetCategory = { category: string; channels: PresetChannel[] };
 export type Presets = PresetCategory[];
 
+export type SttSegment = { start: number; end: number; text: string };
+
+export type TranscribeResult = {
+  language: string;
+  duration: number;
+  backend: string;
+  device: string;
+  model: string;
+  segment_count: number;
+  srt_path: string | null;
+  segments: SttSegment[];
+};
+
 export type ProgressEvent = {
-  job_id: string;
+  job_id?: string;
   stage: string;
   message: string;
 };
@@ -84,6 +97,14 @@ export function prepareMedia(url: string): Promise<Job> {
 
 export function listChannelUploads(channelUrl: string, limit?: number): Promise<VideoEntry[]> {
   return invoke<VideoEntry[]>("list_channel_uploads", { channelUrl, limit });
+}
+
+export function transcribe(
+  audioPath: string,
+  outputDir: string,
+  modelSize?: string,
+): Promise<TranscribeResult> {
+  return invoke<TranscribeResult>("transcribe", { audioPath, outputDir, modelSize });
 }
 
 export function getPresets(): Promise<Presets> {

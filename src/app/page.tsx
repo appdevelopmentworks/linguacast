@@ -9,6 +9,7 @@ import {
   onProgress,
   pingSidecar,
   prepareMedia,
+  transcribe,
   formatDuration,
   routingLabel,
   type DependencyReport,
@@ -16,6 +17,7 @@ import {
   type MediaMeta,
   type Presets,
   type SidecarHealth,
+  type TranscribeResult,
   type VideoEntry,
 } from "@/lib/api";
 
@@ -36,6 +38,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<MediaMeta | null>(null);
   const [job, setJob] = useState<Job | null>(null);
+  const [transcript, setTranscript] = useState<TranscribeResult | null>(null);
 
   const [openChannel, setOpenChannel] = useState<string | null>(null);
   const [uploads, setUploads] = useState<VideoEntry[]>([]);
@@ -72,6 +75,7 @@ export default function Home() {
     setError(null);
     setJob(null);
     setPreview(null);
+    setTranscript(null);
     setProgress("開始しています…");
     try {
       setJob(await prepareMedia(url.trim()));
@@ -82,6 +86,22 @@ export default function Home() {
       setProgress(null);
     }
   }, [url]);
+
+  const runTranscribe = useCallback(async () => {
+    if (!job?.artifacts.extracted_wav) return;
+    setBusy(true);
+    setError(null);
+    setTranscript(null);
+    setProgress("文字起こしを開始しています…");
+    try {
+      setTranscript(await transcribe(job.artifacts.extracted_wav, job.work_dir));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [job]);
 
   const runPreview = useCallback(async () => {
     setBusy(true);
@@ -247,8 +267,53 @@ export default function Home() {
                 <code className="path">{job.artifacts.extracted_wav}</code>
               </div>
             )}
+            <div className="artifact-row">
+              <span className="artifact-label">次のステップ</span>
+              <button
+                className="start-btn"
+                onClick={() => void runTranscribe()}
+                disabled={busy || !job.artifacts.extracted_wav}
+              >
+                文字起こし (Whisper)
+              </button>
+            </div>
           </section>
         </>
+      )}
+
+      {transcript && (
+        <section className="media-card">
+          <div className="media-card-head">
+            <span className="section-label">文字起こし 完了（原語 SRT）</span>
+            <span className="routing-badge routing-medium">
+              {transcript.backend} / {transcript.device}
+            </span>
+          </div>
+          <div className="media-meta">
+            <span>言語: {transcript.language}</span>
+            <span>セグメント: {transcript.segment_count}</span>
+            <span>モデル: {transcript.model}</span>
+          </div>
+          {transcript.srt_path && (
+            <div className="artifact-row">
+              <span className="artifact-label">SRT</span>
+              <code className="path">{transcript.srt_path}</code>
+            </div>
+          )}
+          <div className="transcript-preview">
+            {transcript.segments.slice(0, 5).map((s, i) => (
+              <div className="transcript-line" key={i}>
+                <span className="transcript-time">{formatDuration(s.start)}</span>
+                <span>{s.text}</span>
+              </div>
+            ))}
+            {transcript.segments.length > 5 && (
+              <div className="transcript-more">
+                … 他 {transcript.segments.length - 5} セグメント
+              </div>
+            )}
+          </div>
+        </section>
       )}
 
       {/* Preset channels */}
