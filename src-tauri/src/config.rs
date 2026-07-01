@@ -88,3 +88,55 @@ pub fn save_presets(app: &AppHandle, presets: &Presets) -> Result<(), String> {
         .map_err(|e| format!("cannot serialize presets: {e}"))?;
     fs::write(&path, txt).map_err(|e| format!("cannot write presets: {e}"))
 }
+
+// --- App settings (translation model, OpenRouter slug, source language) ---
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct Settings {
+    /// Default translation model (benchmark default: translategemma:27b).
+    /// Switchable in the UI to qwen3.6 / gemma4 / any LM Studio model.
+    pub translation_model: String,
+    /// OpenRouter model slug for the cloud tier (e.g. anthropic/claude-...).
+    pub openrouter_model: Option<String>,
+    /// Source language code for transcription/translation.
+    pub source_lang: String,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            translation_model: "translategemma:27b".to_string(),
+            openrouter_model: None,
+            source_lang: "en".to_string(),
+        }
+    }
+}
+
+fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("cannot resolve config dir: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("cannot create config dir: {e}"))?;
+    Ok(dir.join("settings.json"))
+}
+
+pub fn load_settings(app: &AppHandle) -> Result<Settings, String> {
+    let path = settings_path(app)?;
+    if path.exists() {
+        let txt = fs::read_to_string(&path).map_err(|e| format!("cannot read settings: {e}"))?;
+        serde_json::from_str(&txt).map_err(|e| format!("cannot parse settings: {e}"))
+    } else {
+        let defaults = Settings::default();
+        save_settings(app, &defaults)?;
+        Ok(defaults)
+    }
+}
+
+pub fn save_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
+    let path = settings_path(app)?;
+    let txt = serde_json::to_string_pretty(settings)
+        .map_err(|e| format!("cannot serialize settings: {e}"))?;
+    fs::write(&path, txt).map_err(|e| format!("cannot write settings: {e}"))
+}

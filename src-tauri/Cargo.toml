@@ -22,3 +22,4 @@ reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["process", "time", "rt-multi-thread", "macros", "sync"] }
 thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
+keyring = { version = "3", features = ["windows-native", "apple-native"] }

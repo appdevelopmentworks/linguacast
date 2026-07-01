@@ -304,6 +304,30 @@ code {
   color: var(--muted);
 }
 
+.model-select {
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 320px;
+}
+
+.translate-pair {
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.translate-pair:last-child {
+  border-bottom: none;
+}
+
+.src-text {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* --- presets --- */
 .presets {
   margin-top: 8px;

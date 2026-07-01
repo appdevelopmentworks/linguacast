@@ -124,6 +124,128 @@ pub fn save_presets(app: tauri::AppHandle, presets: crate::config::Presets) -> R
     crate::config::save_presets(&app, &presets)
 }
 
+// --- Settings + secrets (Session 3) ---
+
+#[tauri::command]
+pub fn get_settings(app: tauri::AppHandle) -> Result<crate::config::Settings, String> {
+    crate::config::load_settings(&app)
+}
+
+#[tauri::command]
+pub fn save_settings(
+    app: tauri::AppHandle,
+    settings: crate::config::Settings,
+) -> Result<(), String> {
+    crate::config::save_settings(&app, &settings)
+}
+
+const OPENROUTER_KEY_NAME: &str = "openrouter_api_key";
+
+#[tauri::command]
+pub fn set_openrouter_key(key: String) -> Result<(), String> {
+    crate::secrets::set_secret(OPENROUTER_KEY_NAME, &key)
+}
+
+/// Only reports presence — the key itself never travels to the UI.
+#[tauri::command]
+pub fn has_openrouter_key() -> Result<bool, String> {
+    Ok(crate::secrets::get_secret(OPENROUTER_KEY_NAME)?.is_some())
+}
+
+// --- Session 3: translation (proxy to the sidecar translate stage) ---
+
+#[derive(Serialize, Deserialize)]
+pub struct TranslateBackends {
+    ollama: serde_json::Value,
+    lmstudio: serde_json::Value,
+}
+
+#[tauri::command]
+pub async fn translate_backends(
+    manager: State<'_, Arc<SidecarManager>>,
+) -> Result<TranslateBackends, String> {
+    let url = format!("{}/translate/backends", manager.base_url());
+    let resp = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    resp.json::<TranslateBackends>()
+        .await
+        .map_err(|e| format!("invalid backends response: {e}"))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TranslateSample {
+    start: f64,
+    end: f64,
+    src: String,
+    dst: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TranslateSrtResult {
+    tier: String,
+    model: String,
+    base_url: String,
+    segment_count: u32,
+    translated_srt_path: String,
+    samples: Vec<TranslateSample>,
+}
+
+#[tauri::command]
+pub async fn translate_srt(
+    app: tauri::AppHandle,
+    manager: State<'_, Arc<SidecarManager>>,
+    srt_path: String,
+    output_dir: String,
+    model: Option<String>,
+) -> Result<TranslateSrtResult, String> {
+    let settings = crate::config::load_settings(&app)?;
+    let chosen_model = model.unwrap_or(settings.translation_model);
+
+    let _ = app.emit(
+        "linguacast://progress",
+        serde_json::json!({
+            "stage": "translate",
+            "message": format!("和訳中…（モデル: {chosen_model}）"),
+        }),
+    );
+
+    // The cloud key only travels Rust -> sidecar over loopback, never to the UI.
+    let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
+
+    let url = format!("{}/translate/srt", manager.base_url());
+    let body = serde_json::json!({
+        "srt_path": srt_path,
+        "output_dir": output_dir,
+        "model": chosen_model,
+        "source_lang": settings.source_lang,
+        "openrouter_key": openrouter_key,
+        "openrouter_model": settings.openrouter_model,
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(6 * 3600))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+
+    if resp.status().is_success() {
+        resp.json::<TranslateSrtResult>()
+            .await
+            .map_err(|e| format!("invalid translation response: {e}"))
+    } else {
+        let status = resp.status();
+        let detail = resp.text().await.unwrap_or_default();
+        Err(format!("translation failed ({status}): {detail}"))
+    }
+}
+
 // --- Session 2: transcription (proxy to the sidecar STT stage) ---
 
 #[derive(Serialize, Deserialize)]

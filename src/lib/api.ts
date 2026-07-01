@@ -73,6 +73,26 @@ export type TranscribeResult = {
   segments: SttSegment[];
 };
 
+export type Settings = {
+  translation_model: string;
+  openrouter_model: string | null;
+  source_lang: string;
+};
+
+export type TierInfo = { available: boolean; models: string[] };
+export type TranslateBackends = { ollama: TierInfo; lmstudio: TierInfo };
+
+export type TranslateSample = { start: number; end: number; src: string; dst: string };
+
+export type TranslateSrtResult = {
+  tier: string;
+  model: string;
+  base_url: string;
+  segment_count: number;
+  translated_srt_path: string;
+  samples: TranslateSample[];
+};
+
 export type ProgressEvent = {
   job_id?: string;
   stage: string;
@@ -109,6 +129,36 @@ export function transcribe(
 
 export function getPresets(): Promise<Presets> {
   return invoke<Presets>("get_presets");
+}
+
+export function getSettings(): Promise<Settings> {
+  return invoke<Settings>("get_settings");
+}
+
+export function saveSettings(settings: Settings): Promise<void> {
+  return invoke("save_settings", { settings });
+}
+
+export function translateBackends(): Promise<TranslateBackends> {
+  return invoke<TranslateBackends>("translate_backends");
+}
+
+export function translateSrt(
+  srtPath: string,
+  outputDir: string,
+  model?: string,
+): Promise<TranslateSrtResult> {
+  return invoke<TranslateSrtResult>("translate_srt", { srtPath, outputDir, model });
+}
+
+const TIER_LABELS: Record<string, string> = {
+  ollama: "ローカル (Ollama)",
+  lmstudio: "ローカル (LM Studio)",
+  openrouter: "クラウド (OpenRouter)",
+};
+
+export function tierLabel(tier: string): string {
+  return TIER_LABELS[tier] ?? tier;
 }
 
 export function savePresets(presets: Presets): Promise<void> {

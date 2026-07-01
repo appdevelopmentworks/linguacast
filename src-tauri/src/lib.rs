@@ -3,6 +3,7 @@ mod config;
 mod deps;
 mod external;
 mod media;
+mod secrets;
 mod sidecar;
 
 use std::sync::Arc;
@@ -38,7 +39,13 @@ pub fn run() {
             commands::list_channel_uploads,
             commands::get_presets,
             commands::save_presets,
-            commands::transcribe
+            commands::transcribe,
+            commands::get_settings,
+            commands::save_settings,
+            commands::set_openrouter_key,
+            commands::has_openrouter_key,
+            commands::translate_backends,
+            commands::translate_srt
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -5,19 +5,27 @@ import {
   checkDependencies,
   fetchMetadata,
   getPresets,
+  getSettings,
   listChannelUploads,
   onProgress,
   pingSidecar,
   prepareMedia,
+  saveSettings,
+  tierLabel,
   transcribe,
+  translateBackends,
+  translateSrt,
   formatDuration,
   routingLabel,
   type DependencyReport,
   type Job,
   type MediaMeta,
   type Presets,
+  type Settings,
   type SidecarHealth,
   type TranscribeResult,
+  type TranslateBackends,
+  type TranslateSrtResult,
   type VideoEntry,
 } from "@/lib/api";
 
@@ -39,25 +47,52 @@ export default function Home() {
   const [preview, setPreview] = useState<MediaMeta | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [transcript, setTranscript] = useState<TranscribeResult | null>(null);
+  const [translation, setTranslation] = useState<TranslateSrtResult | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [backends, setBackends] = useState<TranslateBackends | null>(null);
 
   const [openChannel, setOpenChannel] = useState<string | null>(null);
   const [uploads, setUploads] = useState<VideoEntry[]>([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
 
-  // Initial load: dependency check, presets, sidecar health.
+  // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
     const init = async () => {
-      const [d, p, h] = await Promise.allSettled([
+      const [d, p, h, s, b] = await Promise.allSettled([
         checkDependencies(),
         getPresets(),
         pingSidecar(),
+        getSettings(),
+        translateBackends(),
       ]);
       if (d.status === "fulfilled") setDeps(d.value);
       if (p.status === "fulfilled") setPresets(p.value);
       if (h.status === "fulfilled") setHealth(h.value);
+      if (s.status === "fulfilled") setSettings(s.value);
+      if (b.status === "fulfilled") setBackends(b.value);
     };
     void init();
   }, []);
+
+  const changeModel = useCallback(
+    (model: string) => {
+      if (!settings) return;
+      const next = { ...settings, translation_model: model };
+      setSettings(next);
+      void saveSettings(next);
+    },
+    [settings],
+  );
+
+  // Local model choices from both local tiers (Ollama first, then LM Studio).
+  const modelChoices = (() => {
+    const list: string[] = [];
+    for (const m of backends?.ollama.models ?? []) list.push(m);
+    for (const m of backends?.lmstudio.models ?? []) if (!list.includes(m)) list.push(m);
+    const current = settings?.translation_model;
+    if (current && !list.includes(current)) list.unshift(current);
+    return list;
+  })();
 
   // Subscribe to pipeline progress events (setState in an external callback).
   useEffect(() => {
@@ -76,6 +111,7 @@ export default function Home() {
     setJob(null);
     setPreview(null);
     setTranscript(null);
+    setTranslation(null);
     setProgress("開始しています…");
     try {
       setJob(await prepareMedia(url.trim()));
@@ -92,6 +128,7 @@ export default function Home() {
     setBusy(true);
     setError(null);
     setTranscript(null);
+    setTranslation(null);
     setProgress("文字起こしを開始しています…");
     try {
       setTranscript(await transcribe(job.artifacts.extracted_wav, job.work_dir));
@@ -102,6 +139,22 @@ export default function Home() {
       setProgress(null);
     }
   }, [job]);
+
+  const runTranslate = useCallback(async () => {
+    if (!job || !transcript?.srt_path) return;
+    setBusy(true);
+    setError(null);
+    setTranslation(null);
+    setProgress("和訳を開始しています…");
+    try {
+      setTranslation(await translateSrt(transcript.srt_path, job.work_dir));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [job, transcript]);
 
   const runPreview = useCallback(async () => {
     setBusy(true);
@@ -312,6 +365,60 @@ export default function Home() {
                 … 他 {transcript.segments.length - 5} セグメント
               </div>
             )}
+          </div>
+          <div className="artifact-row">
+            <span className="artifact-label">翻訳モデル</span>
+            <select
+              className="model-select"
+              value={settings?.translation_model ?? ""}
+              onChange={(e) => changeModel(e.target.value)}
+              disabled={busy}
+            >
+              {modelChoices.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <button
+              className="start-btn"
+              onClick={() => void runTranslate()}
+              disabled={busy || !transcript.srt_path}
+            >
+              和訳 (SRT)
+            </button>
+          </div>
+        </section>
+      )}
+
+      {translation && (
+        <section className="media-card">
+          <div className="media-card-head">
+            <span className="section-label">和訳 完了（日本語 SRT）</span>
+            <span className="routing-badge routing-short">
+              {tierLabel(translation.tier)} / {translation.model}
+            </span>
+          </div>
+          <div className="media-meta">
+            <span>セグメント: {translation.segment_count}</span>
+          </div>
+          <div className="artifact-row">
+            <span className="artifact-label">和訳 SRT</span>
+            <code className="path">{translation.translated_srt_path}</code>
+          </div>
+          <div className="transcript-preview">
+            {translation.samples.map((s, i) => (
+              <div className="translate-pair" key={i}>
+                <div className="transcript-line">
+                  <span className="transcript-time">{formatDuration(s.start)}</span>
+                  <span className="src-text">{s.src}</span>
+                </div>
+                <div className="transcript-line">
+                  <span className="transcript-time" />
+                  <span>{s.dst}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
       )}
