@@ -1,4 +1,8 @@
 mod commands;
+mod config;
+mod deps;
+mod external;
+mod media;
 mod sidecar;
 
 use std::sync::Arc;
@@ -27,7 +31,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::ping_sidecar,
-            commands::sidecar_status
+            commands::sidecar_status,
+            commands::check_dependencies,
+            commands::fetch_metadata,
+            commands::prepare_media,
+            commands::list_channel_uploads,
+            commands::get_presets,
+            commands::save_presets
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

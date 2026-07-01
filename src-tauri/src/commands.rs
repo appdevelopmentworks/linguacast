@@ -84,3 +84,41 @@ pub fn sidecar_status(manager: State<'_, Arc<SidecarManager>>) -> SidecarStatus 
         base_url: manager.base_url(),
     }
 }
+
+// --- Session 1: media input / audio extraction ---
+
+#[tauri::command]
+pub async fn check_dependencies() -> crate::deps::DependencyReport {
+    crate::deps::check_all().await
+}
+
+#[tauri::command]
+pub async fn fetch_metadata(url: String) -> Result<crate::media::MediaMeta, String> {
+    crate::media::fetch_metadata(&url).await
+}
+
+#[tauri::command]
+pub async fn prepare_media(
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<crate::media::Job, String> {
+    crate::media::prepare_media(&app, &url).await
+}
+
+#[tauri::command]
+pub async fn list_channel_uploads(
+    channel_url: String,
+    limit: Option<u32>,
+) -> Result<Vec<crate::media::VideoEntry>, String> {
+    crate::media::list_channel_uploads(&channel_url, limit).await
+}
+
+#[tauri::command]
+pub fn get_presets(app: tauri::AppHandle) -> Result<crate::config::Presets, String> {
+    crate::config::load_presets(&app)
+}
+
+#[tauri::command]
+pub fn save_presets(app: tauri::AppHandle, presets: crate::config::Presets) -> Result<(), String> {
+    crate::config::save_presets(&app, &presets)
+}

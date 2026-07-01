@@ -6,9 +6,7 @@ export const metadata: Metadata = {
   description: "外国語の一次情報を、日本語の音声で。",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ja">
       <body>{children}</body>
