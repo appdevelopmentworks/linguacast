@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+src-tauri/target
+src-tauri/gen
+sidecar/.venv
+package-lock.json
+
+# User-authored Japanese docs — leave formatting to the author
+docs
+*.md
+
+# Next.js-managed files (rewritten on build)
+tsconfig.json
+next-env.d.ts

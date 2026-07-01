@@ -1,0 +1,25 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts.timestamp
+*.tsbuildinfo
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Python sidecar
+sidecar/.venv/
+sidecar/**/__pycache__/
+sidecar/.ruff_cache/
+*.pyc
+
+# Secrets / env (never commit API keys — see CLAUDE.md guardrails)
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db

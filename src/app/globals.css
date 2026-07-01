@@ -1,0 +1,105 @@
+:root {
+  --bg: #1a1d23;
+  --panel: #222831;
+  --border: #333a45;
+  --text: #e6e9ef;
+  --muted: #9aa4b2;
+  --accent: #58a6ff;
+  --ok: #3fb950;
+  --ng: #f85149;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    Meiryo,
+    sans-serif;
+}
+
+.container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 32px;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 8px 0 32px;
+  color: var(--muted);
+}
+
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.status-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.ok {
+  background: var(--ok);
+  box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.18);
+}
+
+.status-dot.ng {
+  background: var(--ng);
+  box-shadow: 0 0 0 4px rgba(248, 81, 73, 0.18);
+}
+
+.status-title {
+  font-weight: 600;
+}
+
+.status-detail {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.recheck {
+  margin-top: 20px;
+  padding: 10px 18px;
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.recheck:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.recheck:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

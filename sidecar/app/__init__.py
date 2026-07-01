@@ -1,0 +1,1 @@
+"""linguacast FastAPI sidecar package."""

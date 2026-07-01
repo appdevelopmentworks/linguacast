@@ -1,0 +1,23 @@
+[package]
+name = "linguacast"
+version = "0.1.0"
+description = "Turn foreign-language audio into Japanese audio, local-first with cloud fallbacks."
+authors = ["linguacast"]
+edition = "2021"
+rust-version = "1.77.2"
+
+# The library target is what Tauri (and the mobile bindings) link against.
+[lib]
+name = "linguacast_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["process", "time", "rt-multi-thread", "macros", "sync"] }
+thiserror = "2"
