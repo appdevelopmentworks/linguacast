@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   checkDependencies,
+  dubVideo,
   fetchMetadata,
+  FIT_METHOD_LABELS,
   getPresets,
   getSettings,
   listChannelUploads,
@@ -21,6 +23,7 @@ import {
   formatDuration,
   routingLabel,
   type DependencyReport,
+  type DubResult,
   type Job,
   type MediaMeta,
   type Presets,
@@ -59,6 +62,7 @@ export default function Home() {
   const [backends, setBackends] = useState<TranslateBackends | null>(null);
   const [tts, setTts] = useState<TtsStatus | null>(null);
   const [audio, setAudio] = useState<SynthesizeResult | null>(null);
+  const [dub, setDub] = useState<DubResult | null>(null);
 
   const [openChannel, setOpenChannel] = useState<string | null>(null);
   const [uploads, setUploads] = useState<VideoEntry[]>([]);
@@ -121,6 +125,22 @@ export default function Home() {
     }
   }, [job, script]);
 
+  const runDub = useCallback(async () => {
+    if (!job || !translation) return;
+    setBusy(true);
+    setError(null);
+    setDub(null);
+    setProgress("吹き替え生成を開始しています…");
+    try {
+      setDub(await dubVideo(translation.translated_srt_path, job.work_dir, job.meta.source_url));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [job, translation]);
+
   // Flattened VOICEVOX style choices: 「話者名（スタイル）」 -> style id.
   const voiceChoices = (tts?.speakers ?? []).flatMap((sp) =>
     sp.styles.map((st) => ({ id: st.id, label: `${sp.name}（${st.name}）` })),
@@ -156,6 +176,7 @@ export default function Home() {
     setTranslation(null);
     setScript(null);
     setAudio(null);
+    setDub(null);
     setProgress("開始しています…");
     try {
       setJob(await prepareMedia(url.trim()));
@@ -175,6 +196,7 @@ export default function Home() {
     setTranslation(null);
     setScript(null);
     setAudio(null);
+    setDub(null);
     setProgress("文字起こしを開始しています…");
     try {
       setTranscript(await transcribe(job.artifacts.extracted_wav, job.work_dir));
@@ -191,6 +213,7 @@ export default function Home() {
     setBusy(true);
     setError(null);
     setTranslation(null);
+    setDub(null);
     setProgress("和訳を開始しています…");
     try {
       setTranslation(await translateSrt(transcript.srt_path, job.work_dir));
@@ -588,6 +611,39 @@ export default function Home() {
                 </div>
               </div>
             ))}
+          </div>
+          <div className="artifact-row">
+            <span className="artifact-label">吹き替えモード</span>
+            <button className="start-btn" onClick={() => void runDub()} disabled={busy}>
+              吹き替え動画を生成
+            </button>
+            <span className="mode-note">元動画に日本語トラックを同期・多重化します</span>
+          </div>
+        </section>
+      )}
+
+      {dub && (
+        <section className="media-card">
+          <div className="media-card-head">
+            <span className="section-label">吹き替え 完了</span>
+            <span className="routing-badge routing-short">{dub.segment_count} セグメント同期</span>
+          </div>
+          <div className="media-meta">
+            {Object.entries(dub.fit_summary).map(([method, count]) => (
+              <span key={method}>
+                {FIT_METHOD_LABELS[method] ?? method}: {count}
+              </span>
+            ))}
+          </div>
+          {dub.dubbed_video_path && (
+            <div className="artifact-row">
+              <span className="artifact-label">吹き替え動画</span>
+              <code className="path">{dub.dubbed_video_path}</code>
+            </div>
+          )}
+          <div className="artifact-row">
+            <span className="artifact-label">日本語トラック</span>
+            <code className="path">{dub.dubbed_audio_path}</code>
           </div>
         </section>
       )}

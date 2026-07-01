@@ -409,3 +409,74 @@ def tts_synthesize(req: SynthesizeRequest) -> SynthesizeResponse:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     return SynthesizeResponse(**result)
+
+
+# --- Dub mode (Session 6) ---
+
+
+class DubRequest(BaseModel):
+    translated_srt_path: str
+    output_dir: str
+    style_id: int = 3
+    video_path: str | None = None
+
+
+class SegmentFitModel(BaseModel):
+    index: int
+    start_sec: float
+    slot_sec: float
+    natural_sec: float
+    final_sec: float
+    method: str
+    shortened: bool
+
+
+class DubResponse(BaseModel):
+    dubbed_audio_path: str
+    dubbed_video_path: str | None = None
+    segment_count: int
+    fit_summary: dict[str, int]
+    fits: list[SegmentFitModel]
+
+
+@app.post("/dub/render", response_model=DubResponse)
+def dub_render(req: DubRequest) -> DubResponse:
+    """Render a timing-synced Japanese dub track and mux it into the video."""
+    from app.dub import service as dub_service
+    from app.translate import router as rt
+    from app.tts import voicevox
+
+    if not os.path.exists(req.translated_srt_path):
+        raise HTTPException(status_code=404, detail=f"SRT not found: {req.translated_srt_path}")
+    if req.video_path and not os.path.exists(req.video_path):
+        raise HTTPException(status_code=404, detail=f"video not found: {req.video_path}")
+
+    # Dub mode is VOICEVOX-only in v0.1 (speedScale is part of the fit chain).
+    if voicevox.health() is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "VOICEVOX ENGINE が起動していません（http://127.0.0.1:50021）。"
+                "吹き替え生成には VOICEVOX が必要です。起動してから再実行してください。"
+            ),
+        )
+
+    # Concise-rewrite backend is best-effort: without one the fit chain still
+    # runs (speedScale/stretch/trim), quality just degrades on dense speech.
+    try:
+        rewrite_backend = rt.resolve_backend(require_general=True)
+    except rt.NoBackendAvailable:
+        rewrite_backend = None
+
+    try:
+        result = dub_service.render_dub(
+            req.translated_srt_path,
+            req.output_dir,
+            req.style_id,
+            video_path=req.video_path,
+            rewrite_backend=rewrite_backend,
+        )
+    except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return DubResponse(**result)

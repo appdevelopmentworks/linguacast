@@ -218,6 +218,40 @@ pub async fn list_channel_uploads(
     Ok(entries)
 }
 
+/// Download the full video (merged mp4) for dub mode. Cached per job dir.
+pub async fn download_video(work_dir: &str, url: &str) -> Result<String, String> {
+    let dir = Path::new(work_dir);
+    let existing = dir.join("video.mp4");
+    if existing.exists() {
+        return Ok(existing.to_string_lossy().into_owned());
+    }
+
+    let out_tmpl = dir.join("video.%(ext)s");
+    let out_tmpl_str = out_tmpl.to_string_lossy().into_owned();
+    run_capture(
+        "yt-dlp",
+        [
+            // Cap at 1080p to keep dub-mode downloads sane.
+            "-f",
+            "bv*[height<=1080]+ba/b[height<=1080]/b",
+            "--merge-output-format",
+            "mp4",
+            "--no-playlist",
+            "--no-warnings",
+            "-o",
+            out_tmpl_str.as_str(),
+            url,
+        ],
+    )
+    .await?;
+
+    if existing.exists() {
+        Ok(existing.to_string_lossy().into_owned())
+    } else {
+        Err("downloaded video file not found".to_string())
+    }
+}
+
 // --- internals ---
 
 async fn download_audio(url: &str, work_dir: &Path) -> Result<String, String> {

@@ -126,6 +126,24 @@ export type SynthesizeResult = {
   line_count: number;
 };
 
+export type SegmentFit = {
+  index: number;
+  start_sec: number;
+  slot_sec: number;
+  natural_sec: number;
+  final_sec: number;
+  method: string;
+  shortened: boolean;
+};
+
+export type DubResult = {
+  dubbed_audio_path: string;
+  dubbed_video_path: string | null;
+  segment_count: number;
+  fit_summary: Record<string, number>;
+  fits: SegmentFit[];
+};
+
 export type ProgressEvent = {
   job_id?: string;
   stage: string;
@@ -208,6 +226,23 @@ export function synthesizeScript(
 ): Promise<SynthesizeResult> {
   return invoke<SynthesizeResult>("synthesize_script", { scriptJsonPath, outputDir });
 }
+
+export function dubVideo(
+  translatedSrtPath: string,
+  workDir: string,
+  sourceUrl: string,
+): Promise<DubResult> {
+  return invoke<DubResult>("dub_video", { translatedSrtPath, workDir, sourceUrl });
+}
+
+export const FIT_METHOD_LABELS: Record<string, string> = {
+  natural: "そのまま",
+  shortened: "短縮訳",
+  absorbed: "無音吸収",
+  speed_scaled: "話速調整",
+  stretched: "タイムストレッチ",
+  trimmed: "トリム",
+};
 
 const TIER_LABELS: Record<string, string> = {
   ollama: "ローカル (Ollama)",

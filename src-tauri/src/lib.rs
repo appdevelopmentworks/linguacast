@@ -50,7 +50,8 @@ pub fn run() {
             commands::tts_status,
             commands::synthesize_script,
             commands::set_google_tts_key,
-            commands::has_google_tts_key
+            commands::has_google_tts_key,
+            commands::dub_video
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

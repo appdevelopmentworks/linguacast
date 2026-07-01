@@ -431,6 +431,86 @@ pub async fn synthesize_script(
     }
 }
 
+// --- Session 6: dub mode (timing-synced Japanese track + mux) ---
+
+#[derive(Serialize, Deserialize)]
+pub struct SegmentFit {
+    index: u32,
+    start_sec: f64,
+    slot_sec: f64,
+    natural_sec: f64,
+    final_sec: f64,
+    method: String,
+    shortened: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DubResult {
+    dubbed_audio_path: String,
+    dubbed_video_path: Option<String>,
+    segment_count: u32,
+    fit_summary: std::collections::HashMap<String, u32>,
+    fits: Vec<SegmentFit>,
+}
+
+#[tauri::command]
+pub async fn dub_video(
+    app: tauri::AppHandle,
+    manager: State<'_, Arc<SidecarManager>>,
+    translated_srt_path: String,
+    work_dir: String,
+    source_url: String,
+) -> Result<DubResult, String> {
+    let settings = crate::config::load_settings(&app)?;
+
+    let _ = app.emit(
+        "linguacast://progress",
+        serde_json::json!({
+            "stage": "dub",
+            "message": "元動画をダウンロード中…（初回のみ）",
+        }),
+    );
+    let video_path = crate::media::download_video(&work_dir, &source_url).await?;
+
+    let _ = app.emit(
+        "linguacast://progress",
+        serde_json::json!({
+            "stage": "dub",
+            "message": "吹き替えトラックを合成・同期中…",
+        }),
+    );
+
+    let url = format!("{}/dub/render", manager.base_url());
+    let body = serde_json::json!({
+        "translated_srt_path": translated_srt_path,
+        "output_dir": work_dir,
+        "style_id": settings.narrator_voice,
+        "video_path": video_path,
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(6 * 3600))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+
+    if resp.status().is_success() {
+        resp.json::<DubResult>()
+            .await
+            .map_err(|e| format!("invalid dub response: {e}"))
+    } else {
+        let status = resp.status();
+        let detail = resp.text().await.unwrap_or_default();
+        Err(format!("dub failed ({status}): {detail}"))
+    }
+}
+
 // --- Session 2: transcription (proxy to the sidecar STT stage) ---
 
 #[derive(Serialize, Deserialize)]
