@@ -77,6 +77,8 @@ export type Settings = {
   translation_model: string;
   openrouter_model: string | null;
   source_lang: string;
+  narrator_voice: number;
+  guest_voice: number;
 };
 
 export type TierInfo = { available: boolean; models: string[] };
@@ -106,6 +108,22 @@ export type SummarizeResult = {
   script_txt_path: string;
   script_json_path: string;
   lines: ScriptLine[];
+};
+
+export type SpeakerStyle = { id: number; name: string };
+export type SpeakerInfo = { name: string; styles: SpeakerStyle[] };
+
+export type TtsStatus = {
+  voicevox_available: boolean;
+  voicevox_version: string | null;
+  speakers: SpeakerInfo[];
+  warning: string | null;
+};
+
+export type SynthesizeResult = {
+  engine: string;
+  audio_path: string;
+  line_count: number;
 };
 
 export type ProgressEvent = {
@@ -178,6 +196,17 @@ export function summarizeScript(
     sourceTitle,
     chapters,
   });
+}
+
+export function ttsStatus(): Promise<TtsStatus> {
+  return invoke<TtsStatus>("tts_status");
+}
+
+export function synthesizeScript(
+  scriptJsonPath: string,
+  outputDir: string,
+): Promise<SynthesizeResult> {
+  return invoke<SynthesizeResult>("synthesize_script", { scriptJsonPath, outputDir });
 }
 
 const TIER_LABELS: Record<string, string> = {

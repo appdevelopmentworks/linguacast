@@ -322,6 +322,115 @@ pub async fn summarize_script(
     }
 }
 
+// --- Session 5: TTS (VOICEVOX + cloud fallback) ---
+
+const GOOGLE_TTS_KEY_NAME: &str = "google_tts_api_key";
+
+#[tauri::command]
+pub fn set_google_tts_key(key: String) -> Result<(), String> {
+    crate::secrets::set_secret(GOOGLE_TTS_KEY_NAME, &key)
+}
+
+#[tauri::command]
+pub fn has_google_tts_key() -> Result<bool, String> {
+    Ok(crate::secrets::get_secret(GOOGLE_TTS_KEY_NAME)?.is_some())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SpeakerStyle {
+    id: u32,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SpeakerInfo {
+    name: String,
+    styles: Vec<SpeakerStyle>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct TtsStatus {
+    voicevox_available: bool,
+    voicevox_version: Option<String>,
+    speakers: Vec<SpeakerInfo>,
+    warning: Option<String>,
+}
+
+#[tauri::command]
+pub async fn tts_status(manager: State<'_, Arc<SidecarManager>>) -> Result<TtsStatus, String> {
+    let url = format!("{}/tts/status", manager.base_url());
+    let resp = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    resp.json::<TtsStatus>()
+        .await
+        .map_err(|e| format!("invalid tts status response: {e}"))
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SynthesizeResult {
+    engine: String,
+    audio_path: String,
+    line_count: u32,
+}
+
+#[tauri::command]
+pub async fn synthesize_script(
+    app: tauri::AppHandle,
+    manager: State<'_, Arc<SidecarManager>>,
+    script_json_path: String,
+    output_dir: String,
+) -> Result<SynthesizeResult, String> {
+    let settings = crate::config::load_settings(&app)?;
+
+    let _ = app.emit(
+        "linguacast://progress",
+        serde_json::json!({
+            "stage": "tts",
+            "message": "日本語音声を合成中…",
+        }),
+    );
+
+    let google_key = crate::secrets::get_secret(GOOGLE_TTS_KEY_NAME)?;
+
+    // Narrator and host share a voice; the guest role gets its own (FR-5).
+    let voice_map = serde_json::json!({
+        "ナレーター": settings.narrator_voice,
+        "ホスト": settings.narrator_voice,
+        "ゲスト": settings.guest_voice,
+    });
+
+    let url = format!("{}/tts/synthesize", manager.base_url());
+    let body = serde_json::json!({
+        "script_json_path": script_json_path,
+        "output_dir": output_dir,
+        "voice_map": voice_map,
+        "google_key": google_key,
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(6 * 3600))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+
+    if resp.status().is_success() {
+        resp.json::<SynthesizeResult>()
+            .await
+            .map_err(|e| format!("invalid synthesize response: {e}"))
+    } else {
+        let status = resp.status();
+        let detail = resp.text().await.unwrap_or_default();
+        Err(format!("synthesis failed ({status}): {detail}"))
+    }
+}
+
 // --- Session 2: transcription (proxy to the sidecar STT stage) ---
 
 #[derive(Serialize, Deserialize)]

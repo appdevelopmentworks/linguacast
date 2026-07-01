@@ -12,10 +12,12 @@ import {
   prepareMedia,
   saveSettings,
   summarizeScript,
+  synthesizeScript,
   tierLabel,
   transcribe,
   translateBackends,
   translateSrt,
+  ttsStatus,
   formatDuration,
   routingLabel,
   type DependencyReport,
@@ -25,9 +27,11 @@ import {
   type Settings,
   type SidecarHealth,
   type SummarizeResult,
+  type SynthesizeResult,
   type TranscribeResult,
   type TranslateBackends,
   type TranslateSrtResult,
+  type TtsStatus,
   type VideoEntry,
 } from "@/lib/api";
 
@@ -53,6 +57,8 @@ export default function Home() {
   const [script, setScript] = useState<SummarizeResult | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [backends, setBackends] = useState<TranslateBackends | null>(null);
+  const [tts, setTts] = useState<TtsStatus | null>(null);
+  const [audio, setAudio] = useState<SynthesizeResult | null>(null);
 
   const [openChannel, setOpenChannel] = useState<string | null>(null);
   const [uploads, setUploads] = useState<VideoEntry[]>([]);
@@ -61,18 +67,20 @@ export default function Home() {
   // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
     const init = async () => {
-      const [d, p, h, s, b] = await Promise.allSettled([
+      const [d, p, h, s, b, t] = await Promise.allSettled([
         checkDependencies(),
         getPresets(),
         pingSidecar(),
         getSettings(),
         translateBackends(),
+        ttsStatus(),
       ]);
       if (d.status === "fulfilled") setDeps(d.value);
       if (p.status === "fulfilled") setPresets(p.value);
       if (h.status === "fulfilled") setHealth(h.value);
       if (s.status === "fulfilled") setSettings(s.value);
       if (b.status === "fulfilled") setBackends(b.value);
+      if (t.status === "fulfilled") setTts(t.value);
     };
     void init();
   }, []);
@@ -85,6 +93,37 @@ export default function Home() {
       void saveSettings(next);
     },
     [settings],
+  );
+
+  const changeVoice = useCallback(
+    (role: "narrator_voice" | "guest_voice", styleId: number) => {
+      if (!settings) return;
+      const next = { ...settings, [role]: styleId };
+      setSettings(next);
+      void saveSettings(next);
+    },
+    [settings],
+  );
+
+  const runSynthesize = useCallback(async () => {
+    if (!job || !script) return;
+    setBusy(true);
+    setError(null);
+    setAudio(null);
+    setProgress("音声合成を開始しています…");
+    try {
+      setAudio(await synthesizeScript(script.script_json_path, job.work_dir));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [job, script]);
+
+  // Flattened VOICEVOX style choices: 「話者名（スタイル）」 -> style id.
+  const voiceChoices = (tts?.speakers ?? []).flatMap((sp) =>
+    sp.styles.map((st) => ({ id: st.id, label: `${sp.name}（${st.name}）` })),
   );
 
   // Local model choices from both local tiers (Ollama first, then LM Studio).
@@ -116,6 +155,7 @@ export default function Home() {
     setTranscript(null);
     setTranslation(null);
     setScript(null);
+    setAudio(null);
     setProgress("開始しています…");
     try {
       setJob(await prepareMedia(url.trim()));
@@ -134,6 +174,7 @@ export default function Home() {
     setTranscript(null);
     setTranslation(null);
     setScript(null);
+    setAudio(null);
     setProgress("文字起こしを開始しています…");
     try {
       setTranscript(await transcribe(job.artifacts.extracted_wav, job.work_dir));
@@ -166,6 +207,7 @@ export default function Home() {
     setBusy(true);
     setError(null);
     setScript(null);
+    setAudio(null);
     setProgress("要約台本の生成を開始しています…");
     try {
       setScript(
@@ -238,6 +280,13 @@ export default function Home() {
               <li key={t.name}>{t.hint ?? `${t.name} が見つかりません。`}</li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {tts && !tts.voicevox_available && (
+        <section className="banner banner-warn" role="alert">
+          <strong>VOICEVOX が起動していません</strong>
+          <div className="banner-detail">{tts.warning}</div>
         </section>
       )}
 
@@ -452,6 +501,61 @@ export default function Home() {
             {script.lines.length > 8 && (
               <div className="transcript-more">… 他 {script.lines.length - 8} 行</div>
             )}
+          </div>
+          <div className="artifact-row">
+            <span className="artifact-label">
+              {script.format === "dialogue" ? "ホスト音声" : "ナレーター音声"}
+            </span>
+            <select
+              className="model-select"
+              value={settings?.narrator_voice ?? 3}
+              onChange={(e) => changeVoice("narrator_voice", Number(e.target.value))}
+              disabled={busy || voiceChoices.length === 0}
+            >
+              {voiceChoices.length === 0 && <option value={3}>（VOICEVOX 未接続）</option>}
+              {voiceChoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+            {script.format === "dialogue" && (
+              <select
+                className="model-select"
+                value={settings?.guest_voice ?? 2}
+                onChange={(e) => changeVoice("guest_voice", Number(e.target.value))}
+                disabled={busy || voiceChoices.length === 0}
+                aria-label="ゲスト音声"
+              >
+                {voiceChoices.length === 0 && <option value={2}>（VOICEVOX 未接続）</option>}
+                {voiceChoices.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="start-btn" onClick={() => void runSynthesize()} disabled={busy}>
+              音声を生成
+            </button>
+          </div>
+        </section>
+      )}
+
+      {audio && (
+        <section className="media-card">
+          <div className="media-card-head">
+            <span className="section-label">音声合成 完了</span>
+            <span className="routing-badge routing-short">
+              {audio.engine === "voicevox" ? "VOICEVOX（ローカル）" : "Google Cloud TTS"}
+            </span>
+          </div>
+          <div className="media-meta">
+            <span>{audio.line_count} 行を合成</span>
+          </div>
+          <div className="artifact-row">
+            <span className="artifact-label">音声ファイル</span>
+            <code className="path">{audio.audio_path}</code>
           </div>
         </section>
       )}

@@ -70,6 +70,12 @@ body {
   padding-left: 18px;
 }
 
+.banner-detail {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .banner-warn {
   border-color: color-mix(in srgb, var(--warn) 55%, var(--border));
   background: color-mix(in srgb, var(--warn) 12%, var(--panel));

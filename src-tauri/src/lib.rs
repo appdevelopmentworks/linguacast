@@ -46,7 +46,11 @@ pub fn run() {
             commands::has_openrouter_key,
             commands::translate_backends,
             commands::translate_srt,
-            commands::summarize_script
+            commands::summarize_script,
+            commands::tts_status,
+            commands::synthesize_script,
+            commands::set_google_tts_key,
+            commands::has_google_tts_key
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

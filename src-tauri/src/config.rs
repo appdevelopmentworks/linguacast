@@ -101,6 +101,10 @@ pub struct Settings {
     pub openrouter_model: Option<String>,
     /// Source language code for transcription/translation.
     pub source_lang: String,
+    /// VOICEVOX style id for narrator/host lines (3 = ずんだもん ノーマル).
+    pub narrator_voice: u32,
+    /// VOICEVOX style id for guest lines in dialogue scripts (2 = 四国めたん ノーマル).
+    pub guest_voice: u32,
 }
 
 impl Default for Settings {
@@ -109,6 +113,8 @@ impl Default for Settings {
             translation_model: "translategemma:27b".to_string(),
             openrouter_model: None,
             source_lang: "en".to_string(),
+            narrator_voice: 3,
+            guest_voice: 2,
         }
     }
 }

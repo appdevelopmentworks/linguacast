@@ -300,3 +300,112 @@ def summarize_script(req: SummarizeRequest) -> SummarizeResponse:
         script_json_path=result["script_json_path"],
         lines=[ScriptLine(**line) for line in result["lines"]],
     )
+
+
+# --- TTS (Session 5) ---
+
+
+class SpeakerStyle(BaseModel):
+    id: int
+    name: str
+
+
+class SpeakerInfo(BaseModel):
+    name: str
+    styles: list[SpeakerStyle]
+
+
+class TtsStatusResponse(BaseModel):
+    voicevox_available: bool
+    voicevox_version: str | None
+    speakers: list[SpeakerInfo]
+    # Japanese guidance shown by the UI when VOICEVOX is down (gotcha #4).
+    warning: str | None
+
+
+@app.get("/tts/status", response_model=TtsStatusResponse)
+def tts_status() -> TtsStatusResponse:
+    from app.tts import voicevox
+
+    version = voicevox.health()
+    if version is None:
+        return TtsStatusResponse(
+            voicevox_available=False,
+            voicevox_version=None,
+            speakers=[],
+            warning=(
+                "VOICEVOX ENGINE が起動していません（http://127.0.0.1:50021）。"
+                "VOICEVOX を起動してください。起動しない場合はクラウドTTS"
+                "（Google Cloud TTS）へのフォールバックが利用されます。"
+            ),
+        )
+    try:
+        speaker_list = voicevox.speakers()
+    except Exception:  # noqa: BLE001 — catalogue failure is non-fatal
+        speaker_list = []
+    return TtsStatusResponse(
+        voicevox_available=True,
+        voicevox_version=version,
+        speakers=[SpeakerInfo(**s) for s in speaker_list],
+        warning=None,
+    )
+
+
+class SynthesizeLine(BaseModel):
+    speaker: str = "ナレーター"
+    text: str
+
+
+class SynthesizeRequest(BaseModel):
+    output_dir: str
+    lines: list[SynthesizeLine] | None = None
+    # Alternative input: a script.json produced by /summarize/script.
+    script_json_path: str | None = None
+    # Speaker role -> VOICEVOX style id (e.g. {"ナレーター": 3, "ホスト": 3, "ゲスト": 2}).
+    voice_map: dict[str, int] | None = None
+    engine: str | None = None  # auto (None) | voicevox | google
+    google_key: str | None = None
+
+
+class SynthesizeResponse(BaseModel):
+    engine: str
+    audio_path: str
+    line_count: int
+
+
+@app.post("/tts/synthesize", response_model=SynthesizeResponse)
+def tts_synthesize(req: SynthesizeRequest) -> SynthesizeResponse:
+    """Synthesize a speaker-tagged script into one Japanese WAV."""
+    import json as jsonlib
+
+    from app.tts import service as tts_service
+
+    lines: list[dict]
+    if req.lines:
+        lines = [line.model_dump() for line in req.lines]
+    elif req.script_json_path:
+        if not os.path.exists(req.script_json_path):
+            raise HTTPException(status_code=404, detail=f"script not found: {req.script_json_path}")
+        with open(req.script_json_path, encoding="utf-8") as f:
+            lines = jsonlib.load(f)["lines"]
+    else:
+        raise HTTPException(status_code=422, detail="either lines or script_json_path is required")
+
+    try:
+        engine = tts_service.resolve_engine(req.engine, req.google_key)
+    except tts_service.TTSUnavailable as e:
+        # 503 + Japanese guidance: the fallback contract, not a crash.
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+    try:
+        result = tts_service.synthesize_lines(
+            lines,
+            req.output_dir,
+            engine,
+            voice_map=req.voice_map,
+            google_key=req.google_key,
+        )
+    except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return SynthesizeResponse(**result)
