@@ -34,16 +34,30 @@ class NoBackendAvailable(RuntimeError):
     pass
 
 
-def _pick_model(preferred: str | None, available: list[str]) -> str | None:
-    if preferred and preferred in available:
+def _pick_model(
+    preferred: str | None, available: list[str], require_general: bool = False
+) -> str | None:
+    """Pick a model on this tier, degrading to what IS available.
+
+    ``require_general`` excludes translation-specialized models (TranslateGemma
+    cannot do general tasks like summarization or script writing).
+    """
+
+    def is_tgemma(name: str) -> bool:
+        return "translategemma" in name.lower()
+
+    if preferred and preferred in available and not (require_general and is_tgemma(preferred)):
         return preferred
-    # Preferred model absent on this tier: degrade to what IS available
-    # (fallback contract) — a translation-specialized model first, else the
-    # first chat model. The resolved model is reported to the UI.
-    for m in available:
-        if "translategemma" in m.lower():
-            return m
-    chat_models = [m for m in available if "embed" not in m.lower()]
+
+    if not require_general:
+        # Prefer a translation-specialized model for translation work.
+        for m in available:
+            if is_tgemma(m):
+                return m
+
+    chat_models = [
+        m for m in available if "embed" not in m.lower() and not (require_general and is_tgemma(m))
+    ]
     return chat_models[0] if chat_models else None
 
 
@@ -62,18 +76,19 @@ def resolve_backend(
     forced_tier: str | None = None,
     openrouter_key: str | None = None,
     openrouter_model: str | None = None,
+    require_general: bool = False,
 ) -> Backend:
     if forced_tier in (None, "ollama"):
         models = llm.health_ollama(OLLAMA_BASE)
         if models is not None:
-            model = _pick_model(preferred_model, models)
+            model = _pick_model(preferred_model, models, require_general)
             if model:
                 return Backend("ollama", OLLAMA_V1, model, None, OLLAMA_KEEP_ALIVE, models)
 
     if forced_tier in (None, "lmstudio"):
         models = llm.health_openai_models(LMSTUDIO_V1)
         if models is not None:
-            model = _pick_model(preferred_model, models)
+            model = _pick_model(preferred_model, models, require_general)
             if model:
                 return Backend("lmstudio", LMSTUDIO_V1, model, None, None, models)
 

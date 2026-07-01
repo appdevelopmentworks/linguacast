@@ -11,6 +11,7 @@ import {
   pingSidecar,
   prepareMedia,
   saveSettings,
+  summarizeScript,
   tierLabel,
   transcribe,
   translateBackends,
@@ -23,6 +24,7 @@ import {
   type Presets,
   type Settings,
   type SidecarHealth,
+  type SummarizeResult,
   type TranscribeResult,
   type TranslateBackends,
   type TranslateSrtResult,
@@ -48,6 +50,7 @@ export default function Home() {
   const [job, setJob] = useState<Job | null>(null);
   const [transcript, setTranscript] = useState<TranscribeResult | null>(null);
   const [translation, setTranslation] = useState<TranslateSrtResult | null>(null);
+  const [script, setScript] = useState<SummarizeResult | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [backends, setBackends] = useState<TranslateBackends | null>(null);
 
@@ -112,6 +115,7 @@ export default function Home() {
     setPreview(null);
     setTranscript(null);
     setTranslation(null);
+    setScript(null);
     setProgress("開始しています…");
     try {
       setJob(await prepareMedia(url.trim()));
@@ -129,6 +133,7 @@ export default function Home() {
     setError(null);
     setTranscript(null);
     setTranslation(null);
+    setScript(null);
     setProgress("文字起こしを開始しています…");
     try {
       setTranscript(await transcribe(job.artifacts.extracted_wav, job.work_dir));
@@ -148,6 +153,24 @@ export default function Home() {
     setProgress("和訳を開始しています…");
     try {
       setTranslation(await translateSrt(transcript.srt_path, job.work_dir));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [job, transcript]);
+
+  const runSummarize = useCallback(async () => {
+    if (!job || !transcript?.srt_path) return;
+    setBusy(true);
+    setError(null);
+    setScript(null);
+    setProgress("要約台本の生成を開始しています…");
+    try {
+      setScript(
+        await summarizeScript(transcript.srt_path, job.work_dir, job.meta.title, job.meta.chapters),
+      );
     } catch (e) {
       setError(String(e));
     } finally {
@@ -387,6 +410,48 @@ export default function Home() {
             >
               和訳 (SRT)
             </button>
+            <button
+              className="start-btn"
+              onClick={() => void runSummarize()}
+              disabled={busy || !transcript.srt_path}
+            >
+              要約台本を生成
+            </button>
+          </div>
+        </section>
+      )}
+
+      {script && (
+        <section className="media-card">
+          <div className="media-card-head">
+            <span className="section-label">ポッドキャスト台本 完了</span>
+            <span className="routing-badge routing-short">
+              {script.format === "dialogue" ? "対話形式" : "ナレーション"} /{" "}
+              {script.strategy === "hierarchical" ? "階層要約" : "1パス要約"}
+            </span>
+          </div>
+          <div className="media-title">{script.title}</div>
+          <div className="media-meta">
+            <span>{tierLabel(script.tier)}</span>
+            <span>モデル: {script.model}</span>
+            <span>
+              {script.line_count} 行 / {script.section_count} セクション
+            </span>
+          </div>
+          <div className="artifact-row">
+            <span className="artifact-label">台本</span>
+            <code className="path">{script.script_txt_path}</code>
+          </div>
+          <div className="transcript-preview">
+            {script.lines.slice(0, 8).map((l, i) => (
+              <div className="transcript-line" key={i}>
+                <span className="transcript-time">{l.speaker}</span>
+                <span>{l.text}</span>
+              </div>
+            ))}
+            {script.lines.length > 8 && (
+              <div className="transcript-more">… 他 {script.lines.length - 8} 行</div>
+            )}
           </div>
         </section>
       )}

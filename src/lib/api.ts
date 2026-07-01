@@ -93,6 +93,21 @@ export type TranslateSrtResult = {
   samples: TranslateSample[];
 };
 
+export type ScriptLine = { speaker: string; text: string };
+
+export type SummarizeResult = {
+  tier: string;
+  model: string;
+  title: string;
+  format: "narration" | "dialogue";
+  strategy: "single_pass" | "hierarchical";
+  section_count: number;
+  line_count: number;
+  script_txt_path: string;
+  script_json_path: string;
+  lines: ScriptLine[];
+};
+
 export type ProgressEvent = {
   job_id?: string;
   stage: string;
@@ -149,6 +164,20 @@ export function translateSrt(
   model?: string,
 ): Promise<TranslateSrtResult> {
   return invoke<TranslateSrtResult>("translate_srt", { srtPath, outputDir, model });
+}
+
+export function summarizeScript(
+  srtPath: string,
+  outputDir: string,
+  sourceTitle?: string,
+  chapters?: Chapter[],
+): Promise<SummarizeResult> {
+  return invoke<SummarizeResult>("summarize_script", {
+    srtPath,
+    outputDir,
+    sourceTitle,
+    chapters,
+  });
 }
 
 const TIER_LABELS: Record<string, string> = {

@@ -219,3 +219,84 @@ def translate_srt_endpoint(req: TranslateSrtRequest) -> TranslateSrtResponse:
         translated_srt_path=result["translated_srt_path"],
         samples=[TranslateSample(**s) for s in result["samples"]],
     )
+
+
+# --- Summarize / podcast script (Session 4) ---
+
+
+class SummarizeRequest(BaseModel):
+    srt_path: str
+    output_dir: str
+    source_title: str = ""
+    chapters: list[dict] | None = None
+    model: str | None = None
+    forced_tier: str | None = None
+    openrouter_key: str | None = None
+    openrouter_model: str | None = None
+    # Test hook: shrink the single-pass budget to force hierarchical mode.
+    single_pass_budget: int | None = None
+
+
+class ScriptLine(BaseModel):
+    speaker: str
+    text: str
+
+
+class SummarizeResponse(BaseModel):
+    tier: str
+    model: str
+    title: str
+    format: str  # narration | dialogue
+    strategy: str  # single_pass | hierarchical
+    section_count: int
+    line_count: int
+    script_txt_path: str
+    script_json_path: str
+    lines: list[ScriptLine]
+
+
+@app.post("/summarize/script", response_model=SummarizeResponse)
+def summarize_script(req: SummarizeRequest) -> SummarizeResponse:
+    """Compress a transcript and generate a Japanese podcast script."""
+    from app.summarize import service as summarize_service
+    from app.translate import router as rt
+
+    if not os.path.exists(req.srt_path):
+        raise HTTPException(status_code=404, detail=f"SRT not found: {req.srt_path}")
+
+    try:
+        # Summarization needs a general model — never TranslateGemma.
+        backend = rt.resolve_backend(
+            preferred_model=req.model,
+            forced_tier=req.forced_tier,
+            openrouter_key=req.openrouter_key,
+            openrouter_model=req.openrouter_model,
+            require_general=True,
+        )
+    except rt.NoBackendAvailable as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+
+    try:
+        result = summarize_service.generate_script(
+            req.srt_path,
+            req.output_dir,
+            backend,
+            source_title=req.source_title or "この動画",
+            chapters=req.chapters,
+            single_pass_budget=req.single_pass_budget,
+        )
+    except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return SummarizeResponse(
+        tier=backend.tier,
+        model=backend.model,
+        title=result["title"],
+        format=result["format"],
+        strategy=result["strategy"],
+        section_count=result["section_count"],
+        line_count=len(result["lines"]),
+        script_txt_path=result["script_txt_path"],
+        script_json_path=result["script_json_path"],
+        lines=[ScriptLine(**line) for line in result["lines"]],
+    )

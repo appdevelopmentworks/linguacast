@@ -246,6 +246,82 @@ pub async fn translate_srt(
     }
 }
 
+// --- Session 4: summarize / podcast script ---
+
+#[derive(Serialize, Deserialize)]
+pub struct ScriptLine {
+    speaker: String,
+    text: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SummarizeResult {
+    tier: String,
+    model: String,
+    title: String,
+    format: String,
+    strategy: String,
+    section_count: u32,
+    line_count: u32,
+    script_txt_path: String,
+    script_json_path: String,
+    lines: Vec<ScriptLine>,
+}
+
+#[tauri::command]
+pub async fn summarize_script(
+    app: tauri::AppHandle,
+    manager: State<'_, Arc<SidecarManager>>,
+    srt_path: String,
+    output_dir: String,
+    source_title: Option<String>,
+    chapters: Option<serde_json::Value>,
+) -> Result<SummarizeResult, String> {
+    let settings = crate::config::load_settings(&app)?;
+
+    let _ = app.emit(
+        "linguacast://progress",
+        serde_json::json!({
+            "stage": "summarize",
+            "message": "要約とポッドキャスト台本を生成中…（長編は数分かかります）",
+        }),
+    );
+
+    let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
+
+    let url = format!("{}/summarize/script", manager.base_url());
+    let body = serde_json::json!({
+        "srt_path": srt_path,
+        "output_dir": output_dir,
+        "source_title": source_title.unwrap_or_default(),
+        "chapters": chapters,
+        "openrouter_key": openrouter_key,
+        "openrouter_model": settings.openrouter_model,
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(6 * 3600))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+
+    if resp.status().is_success() {
+        resp.json::<SummarizeResult>()
+            .await
+            .map_err(|e| format!("invalid summarize response: {e}"))
+    } else {
+        let status = resp.status();
+        let detail = resp.text().await.unwrap_or_default();
+        Err(format!("summarize failed ({status}): {detail}"))
+    }
+}
+
 // --- Session 2: transcription (proxy to the sidecar STT stage) ---
 
 #[derive(Serialize, Deserialize)]
