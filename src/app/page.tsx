@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   checkDependencies,
   dubVideo,
@@ -9,11 +10,18 @@ import {
   FIT_METHOD_LABELS,
   getPresets,
   getSettings,
+  hasGoogleTtsKey,
+  hasOpenrouterKey,
   listChannelUploads,
+  listJobs,
   onProgress,
   pingSidecar,
+  prepareLocalMedia,
   prepareMedia,
+  savePresets,
   saveSettings,
+  setGoogleTtsKey,
+  setOpenrouterKey,
   shareFile,
   summarizeScript,
   synthesizeScript,
@@ -27,6 +35,7 @@ import {
   type DependencyReport,
   type DubResult,
   type Job,
+  type JobSummary,
   type MediaMeta,
   type Presets,
   type Settings,
@@ -72,16 +81,28 @@ export default function Home() {
   const [uploads, setUploads] = useState<VideoEntry[]>([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [jobs, setJobs] = useState<JobSummary[]>([]);
+  const [resume, setResume] = useState<JobSummary | null>(null);
+  const [orKeySet, setOrKeySet] = useState(false);
+  const [googleKeySet, setGoogleKeySet] = useState(false);
+  const [orKeyInput, setOrKeyInput] = useState("");
+  const [googleKeyInput, setGoogleKeyInput] = useState("");
+  const [newPreset, setNewPreset] = useState({ category: "", label: "", url: "" });
+
   // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
     const init = async () => {
-      const [d, p, h, s, b, t] = await Promise.allSettled([
+      const [d, p, h, s, b, t, j, ok, gk] = await Promise.allSettled([
         checkDependencies(),
         getPresets(),
         pingSidecar(),
         getSettings(),
         translateBackends(),
         ttsStatus(),
+        listJobs(),
+        hasOpenrouterKey(),
+        hasGoogleTtsKey(),
       ]);
       if (d.status === "fulfilled") setDeps(d.value);
       if (p.status === "fulfilled") setPresets(p.value);
@@ -89,6 +110,9 @@ export default function Home() {
       if (s.status === "fulfilled") setSettings(s.value);
       if (b.status === "fulfilled") setBackends(b.value);
       if (t.status === "fulfilled") setTts(t.value);
+      if (j.status === "fulfilled") setJobs(j.value);
+      if (ok.status === "fulfilled") setOrKeySet(ok.value);
+      if (gk.status === "fulfilled") setGoogleKeySet(gk.value);
     };
     void init();
   }, []);
@@ -113,37 +137,45 @@ export default function Home() {
     [settings],
   );
 
-  const runSynthesize = useCallback(async () => {
-    if (!job || !script) return;
-    setBusy(true);
-    setError(null);
-    setAudio(null);
-    setProgress("音声合成を開始しています…");
-    try {
-      setAudio(await synthesizeScript(script.script_json_path, job.work_dir));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  }, [job, script]);
+  const runSynthesize = useCallback(
+    async (scriptJsonPath?: string) => {
+      const path = scriptJsonPath ?? script?.script_json_path;
+      if (!job || !path) return;
+      setBusy(true);
+      setError(null);
+      setAudio(null);
+      setProgress("音声合成を開始しています…");
+      try {
+        setAudio(await synthesizeScript(path, job.work_dir));
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+    },
+    [job, script],
+  );
 
-  const runDub = useCallback(async () => {
-    if (!job || !translation) return;
-    setBusy(true);
-    setError(null);
-    setDub(null);
-    setProgress("吹き替え生成を開始しています…");
-    try {
-      setDub(await dubVideo(translation.translated_srt_path, job.work_dir, job.meta.source_url));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  }, [job, translation]);
+  const runDub = useCallback(
+    async (translatedSrtPath?: string) => {
+      const srt = translatedSrtPath ?? translation?.translated_srt_path;
+      if (!job || !srt) return;
+      setBusy(true);
+      setError(null);
+      setDub(null);
+      setProgress("吹き替え生成を開始しています…");
+      try {
+        setDub(await dubVideo(srt, job.work_dir, job.meta.source_url));
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+    },
+    [job, translation],
+  );
 
   // Flattened VOICEVOX style choices: 「話者名（スタイル）」 -> style id.
   const voiceChoices = (tts?.speakers ?? []).flatMap((sp) =>
@@ -159,6 +191,149 @@ export default function Home() {
       setError(String(e));
     }
   }, []);
+
+  const resetPipeline = useCallback(() => {
+    setJob(null);
+    setPreview(null);
+    setTranscript(null);
+    setTranslation(null);
+    setScript(null);
+    setAudio(null);
+    setDub(null);
+    setShare(null);
+    setResume(null);
+  }, []);
+
+  const runOpenLocal = useCallback(async () => {
+    const picked = await openFileDialog({
+      multiple: false,
+      title: "音声・動画ファイルを選択",
+      filters: [
+        {
+          name: "メディアファイル",
+          extensions: [
+            "mp4",
+            "mkv",
+            "webm",
+            "mov",
+            "avi",
+            "mp3",
+            "wav",
+            "m4a",
+            "aac",
+            "flac",
+            "ogg",
+            "opus",
+          ],
+        },
+      ],
+    });
+    if (typeof picked !== "string") return;
+    setBusy(true);
+    setError(null);
+    resetPipeline();
+    setProgress("ローカルファイルを取り込んでいます…");
+    try {
+      setJob(await prepareLocalMedia(picked));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }, [resetPipeline]);
+
+  const resumeJob = useCallback(
+    (summary: JobSummary) => {
+      resetPipeline();
+      setResume(summary);
+      setJob({
+        id: summary.id,
+        work_dir: summary.work_dir,
+        stage: summary.stage,
+        meta: summary.meta,
+        artifacts: {
+          source_audio: null,
+          extracted_wav: summary.artifacts.extracted_wav,
+        },
+      });
+    },
+    [resetPipeline],
+  );
+
+  // --- settings panel operations ---
+
+  const saveOrKey = useCallback(async () => {
+    try {
+      await setOpenrouterKey(orKeyInput.trim());
+      setOrKeyInput("");
+      setOrKeySet(await hasOpenrouterKey());
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [orKeyInput]);
+
+  const saveGoogleKey = useCallback(async () => {
+    try {
+      await setGoogleTtsKey(googleKeyInput.trim());
+      setGoogleKeyInput("");
+      setGoogleKeySet(await hasGoogleTtsKey());
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [googleKeyInput]);
+
+  const changeSetting = useCallback(
+    (patch: Partial<Settings>) => {
+      if (!settings) return;
+      const next = { ...settings, ...patch };
+      setSettings(next);
+      void saveSettings(next);
+    },
+    [settings],
+  );
+
+  const updatePresets = useCallback((next: Presets) => {
+    setPresets(next);
+    void savePresets(next);
+  }, []);
+
+  const movePreset = useCallback(
+    (catIdx: number, chIdx: number, dir: -1 | 1) => {
+      const next = presets.map((c) => ({ ...c, channels: [...c.channels] }));
+      const channels = next[catIdx].channels;
+      const target = chIdx + dir;
+      if (target < 0 || target >= channels.length) return;
+      [channels[chIdx], channels[target]] = [channels[target], channels[chIdx]];
+      updatePresets(next);
+    },
+    [presets, updatePresets],
+  );
+
+  const removePreset = useCallback(
+    (catIdx: number, chIdx: number) => {
+      const next = presets.map((c) => ({ ...c, channels: [...c.channels] }));
+      next[catIdx].channels.splice(chIdx, 1);
+      updatePresets(next.filter((c) => c.channels.length > 0));
+    },
+    [presets, updatePresets],
+  );
+
+  const addPreset = useCallback(() => {
+    const category = newPreset.category.trim();
+    const label = newPreset.label.trim();
+    const presetUrl = newPreset.url.trim();
+    if (!category || !label || !presetUrl) return;
+    const next = presets.map((c) => ({ ...c, channels: [...c.channels] }));
+    const existing = next.find((c) => c.category === category);
+    if (existing) {
+      existing.channels.push({ label, url: presetUrl });
+    } else {
+      next.push({ category, channels: [{ label, url: presetUrl }] });
+    }
+    updatePresets(next);
+    setNewPreset({ category: "", label: "", url: "" });
+  }, [newPreset, presets, updatePresets]);
 
   // Local model choices from both local tiers (Ollama first, then LM Studio).
   const modelChoices = (() => {
@@ -223,41 +398,47 @@ export default function Home() {
     }
   }, [job]);
 
-  const runTranslate = useCallback(async () => {
-    if (!job || !transcript?.srt_path) return;
-    setBusy(true);
-    setError(null);
-    setTranslation(null);
-    setDub(null);
-    setProgress("和訳を開始しています…");
-    try {
-      setTranslation(await translateSrt(transcript.srt_path, job.work_dir));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  }, [job, transcript]);
+  const runTranslate = useCallback(
+    async (srtPath?: string) => {
+      const srt = srtPath ?? transcript?.srt_path;
+      if (!job || !srt) return;
+      setBusy(true);
+      setError(null);
+      setTranslation(null);
+      setDub(null);
+      setProgress("和訳を開始しています…");
+      try {
+        setTranslation(await translateSrt(srt, job.work_dir));
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+    },
+    [job, transcript],
+  );
 
-  const runSummarize = useCallback(async () => {
-    if (!job || !transcript?.srt_path) return;
-    setBusy(true);
-    setError(null);
-    setScript(null);
-    setAudio(null);
-    setProgress("要約台本の生成を開始しています…");
-    try {
-      setScript(
-        await summarizeScript(transcript.srt_path, job.work_dir, job.meta.title, job.meta.chapters),
-      );
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  }, [job, transcript]);
+  const runSummarize = useCallback(
+    async (srtPath?: string) => {
+      const srt = srtPath ?? transcript?.srt_path;
+      if (!job || !srt) return;
+      setBusy(true);
+      setError(null);
+      setScript(null);
+      setAudio(null);
+      setProgress("要約台本の生成を開始しています…");
+      try {
+        setScript(await summarizeScript(srt, job.work_dir, job.meta.title, job.meta.chapters));
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+    },
+    [job, transcript],
+  );
 
   const runPreview = useCallback(async () => {
     setBusy(true);
@@ -308,7 +489,181 @@ export default function Home() {
       <header className="app-header">
         <h1>linguacast</h1>
         <span className="tagline">外国語の一次情報を、日本語の音声で。</span>
+        <button
+          className="gear-btn"
+          onClick={() => setShowSettings((v) => !v)}
+          aria-expanded={showSettings}
+        >
+          ⚙ 設定
+        </button>
       </header>
+
+      {showSettings && settings && (
+        <section className="media-card settings-panel">
+          <div className="section-label">設定</div>
+
+          <div className="settings-grid">
+            <label className="settings-label">翻訳モデル</label>
+            <select
+              className="model-select"
+              value={settings.translation_model}
+              onChange={(e) => changeSetting({ translation_model: e.target.value })}
+            >
+              {modelChoices.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+
+            <label className="settings-label">原語（翻訳元）</label>
+            <select
+              className="model-select"
+              value={settings.source_lang}
+              onChange={(e) => changeSetting({ source_lang: e.target.value })}
+            >
+              {["en", "es", "fr", "de", "zh", "ko", "pt", "it", "ru"].map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+
+            <label className="settings-label">ナレーター / ホスト音声</label>
+            <select
+              className="model-select"
+              value={settings.narrator_voice}
+              onChange={(e) => changeSetting({ narrator_voice: Number(e.target.value) })}
+              disabled={voiceChoices.length === 0}
+            >
+              {voiceChoices.length === 0 && (
+                <option value={settings.narrator_voice}>（VOICEVOX 未接続）</option>
+              )}
+              {voiceChoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+
+            <label className="settings-label">ゲスト音声（対話形式）</label>
+            <select
+              className="model-select"
+              value={settings.guest_voice}
+              onChange={(e) => changeSetting({ guest_voice: Number(e.target.value) })}
+              disabled={voiceChoices.length === 0}
+            >
+              {voiceChoices.length === 0 && (
+                <option value={settings.guest_voice}>（VOICEVOX 未接続）</option>
+              )}
+              {voiceChoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.label}
+                </option>
+              ))}
+            </select>
+
+            <label className="settings-label">
+              OpenRouter APIキー
+              <span className={orKeySet ? "key-state key-ok" : "key-state"}>
+                {orKeySet ? "保存済み" : "未設定"}
+              </span>
+            </label>
+            <div className="key-row">
+              <input
+                className="url-input key-input"
+                type="password"
+                placeholder="sk-or-...（空で保存するとクリア）"
+                value={orKeyInput}
+                onChange={(e) => setOrKeyInput(e.target.value)}
+              />
+              <button className="start-btn" onClick={() => void saveOrKey()}>
+                保存
+              </button>
+            </div>
+
+            <label className="settings-label">OpenRouter モデル slug</label>
+            <input
+              className="url-input key-input"
+              type="text"
+              placeholder="例: anthropic/claude-sonnet-5"
+              value={settings.openrouter_model ?? ""}
+              onChange={(e) => changeSetting({ openrouter_model: e.target.value || null })}
+            />
+
+            <label className="settings-label">
+              Google Cloud TTS APIキー
+              <span className={googleKeySet ? "key-state key-ok" : "key-state"}>
+                {googleKeySet ? "保存済み" : "未設定"}
+              </span>
+            </label>
+            <div className="key-row">
+              <input
+                className="url-input key-input"
+                type="password"
+                placeholder="AIza...（空で保存するとクリア）"
+                value={googleKeyInput}
+                onChange={(e) => setGoogleKeyInput(e.target.value)}
+              />
+              <button className="start-btn" onClick={() => void saveGoogleKey()}>
+                保存
+              </button>
+            </div>
+          </div>
+
+          <div className="section-label settings-section">プリセットチャンネルの編集</div>
+          {presets.map((cat, ci) => (
+            <div className="preset-category" key={cat.category}>
+              <div className="category-heading">{cat.category}</div>
+              {cat.channels.map((ch, xi) => (
+                <div className="preset-edit-row" key={ch.url}>
+                  <span className="upload-title">{ch.label}</span>
+                  <span className="preset-edit-actions">
+                    <button className="mini-btn" onClick={() => movePreset(ci, xi, -1)}>
+                      ↑
+                    </button>
+                    <button className="mini-btn" onClick={() => movePreset(ci, xi, 1)}>
+                      ↓
+                    </button>
+                    <button className="mini-btn mini-danger" onClick={() => removePreset(ci, xi)}>
+                      削除
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div className="preset-add-row">
+            <input
+              className="url-input key-input"
+              placeholder="カテゴリ（例: AI）"
+              value={newPreset.category}
+              onChange={(e) => setNewPreset({ ...newPreset, category: e.target.value })}
+            />
+            <input
+              className="url-input key-input"
+              placeholder="表示名"
+              value={newPreset.label}
+              onChange={(e) => setNewPreset({ ...newPreset, label: e.target.value })}
+            />
+            <input
+              className="url-input key-input"
+              placeholder="チャンネルURL"
+              value={newPreset.url}
+              onChange={(e) => setNewPreset({ ...newPreset, url: e.target.value })}
+            />
+            <button className="start-btn" onClick={addPreset}>
+              追加
+            </button>
+          </div>
+
+          <div className="legal-note">
+            ⚠️ ご利用にあたって: linguacast
+            は個人の学習利用を前提としています。他者の著作物（YouTube
+            動画など）から生成した翻訳・音声・動画を公開・再配布すると、著作権や各サービスの利用規約に抵触するおそれがあります。生成物の取り扱いは利用者ご自身の責任でお願いします。
+          </div>
+        </section>
+      )}
 
       {depsMissing.length > 0 && (
         <section className="banner banner-warn" role="alert">
@@ -392,9 +747,14 @@ export default function Home() {
           >
             メタ情報のみ取得
           </button>
-          <span className="mode-note">
-            ※ 出力モードは後続の翻訳・合成段階で使用します（Session 3 以降）。
-          </span>
+          <button
+            className="link-btn"
+            onClick={() => void runOpenLocal()}
+            disabled={busy}
+            title="ダウンロード済みの音声・動画ファイルから開始します"
+          >
+            📂 ローカルファイルを開く
+          </button>
         </div>
       </section>
 
@@ -412,9 +772,94 @@ export default function Home() {
 
       {preview && !job && <MediaCard meta={preview} title="メタ情報" />}
 
+      {resume && job && (
+        <section className="artifact-card">
+          <div className="section-label">再開ポイント（保存済みの中間成果物）</div>
+          {resume.artifacts.source_srt && (
+            <div className="artifact-row">
+              <span className="artifact-label">原語 SRT</span>
+              <button
+                className="start-btn"
+                onClick={() =>
+                  resume.artifacts.source_srt && void runTranslate(resume.artifacts.source_srt)
+                }
+                disabled={busy}
+              >
+                和訳 (SRT)
+              </button>
+              <button
+                className="start-btn"
+                onClick={() =>
+                  resume.artifacts.source_srt && void runSummarize(resume.artifacts.source_srt)
+                }
+                disabled={busy}
+              >
+                要約台本を生成
+              </button>
+            </div>
+          )}
+          {resume.artifacts.translated_srt && (
+            <div className="artifact-row">
+              <span className="artifact-label">和訳 SRT</span>
+              <button
+                className="start-btn"
+                onClick={() =>
+                  resume.artifacts.translated_srt && void runDub(resume.artifacts.translated_srt)
+                }
+                disabled={busy}
+              >
+                吹き替え動画を生成
+              </button>
+            </div>
+          )}
+          {resume.artifacts.script_json && (
+            <div className="artifact-row">
+              <span className="artifact-label">台本 (JSON)</span>
+              <button
+                className="start-btn"
+                onClick={() =>
+                  resume.artifacts.script_json && void runSynthesize(resume.artifacts.script_json)
+                }
+                disabled={busy}
+              >
+                音声を生成
+              </button>
+            </div>
+          )}
+          {resume.artifacts.audio_wav && (
+            <div className="artifact-row">
+              <span className="artifact-label">ポッドキャスト音声</span>
+              <button
+                className="start-btn"
+                onClick={() =>
+                  resume.artifacts.audio_wav && void runShare(resume.artifacts.audio_wav)
+                }
+                disabled={busy}
+              >
+                📱 QRで送る
+              </button>
+            </div>
+          )}
+          {resume.artifacts.dubbed_video && (
+            <div className="artifact-row">
+              <span className="artifact-label">吹き替え動画</span>
+              <button
+                className="start-btn"
+                onClick={() =>
+                  resume.artifacts.dubbed_video && void runShare(resume.artifacts.dubbed_video)
+                }
+                disabled={busy}
+              >
+                📱 QRで送る
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
       {job && (
         <>
-          <MediaCard meta={job.meta} title="音声準備 完了" />
+          <MediaCard meta={job.meta} title={resume ? "ジョブを再開" : "音声準備 完了"} />
           <section className="artifact-card">
             <div className="artifact-row">
               <span className="artifact-label">ジョブ ID</span>
@@ -746,6 +1191,30 @@ export default function Home() {
           </div>
         ))}
       </section>
+
+      {jobs.length > 0 && (
+        <section className="presets">
+          <div className="section-label">最近のジョブ（クリックで再開）</div>
+          {jobs.map((j) => (
+            <button className="upload-item" key={j.id} onClick={() => resumeJob(j)} disabled={busy}>
+              <span className="upload-title">{j.meta.title}</span>
+              <span className="upload-dur">
+                {[
+                  j.artifacts.source_srt && "SRT",
+                  j.artifacts.translated_srt && "和訳",
+                  j.artifacts.script_json && "台本",
+                  j.artifacts.audio_wav && "音声",
+                  j.artifacts.dubbed_video && "吹替",
+                ]
+                  .filter(Boolean)
+                  .join("・") || "音声準備"}
+                {" / "}
+                {formatDuration(j.meta.duration_sec)}
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
 
       <footer className="status-bar">
         <span className={`status-dot ${sidecarOk ? "ok" : "ng"}`} aria-hidden />

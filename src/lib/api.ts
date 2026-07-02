@@ -144,6 +144,23 @@ export type DubResult = {
   fits: SegmentFit[];
 };
 
+export type DetectedArtifacts = {
+  extracted_wav: string | null;
+  source_srt: string | null;
+  translated_srt: string | null;
+  script_json: string | null;
+  audio_wav: string | null;
+  dubbed_video: string | null;
+};
+
+export type JobSummary = {
+  id: string;
+  work_dir: string;
+  stage: string;
+  meta: MediaMeta;
+  artifacts: DetectedArtifacts;
+};
+
 export type ShareInfo = {
   url: string;
   filename: string;
@@ -172,6 +189,30 @@ export function fetchMetadata(url: string): Promise<MediaMeta> {
 
 export function prepareMedia(url: string): Promise<Job> {
   return invoke<Job>("prepare_media", { url });
+}
+
+export function prepareLocalMedia(path: string): Promise<Job> {
+  return invoke<Job>("prepare_local_media", { path });
+}
+
+export function listJobs(): Promise<JobSummary[]> {
+  return invoke<JobSummary[]>("list_jobs");
+}
+
+export function setOpenrouterKey(key: string): Promise<void> {
+  return invoke("set_openrouter_key", { key });
+}
+
+export function hasOpenrouterKey(): Promise<boolean> {
+  return invoke<boolean>("has_openrouter_key");
+}
+
+export function setGoogleTtsKey(key: string): Promise<void> {
+  return invoke("set_google_tts_key", { key });
+}
+
+export function hasGoogleTtsKey(): Promise<boolean> {
+  return invoke<boolean>("has_google_tts_key");
 }
 
 export function listChannelUploads(channelUrl: string, limit?: number): Promise<VideoEntry[]> {

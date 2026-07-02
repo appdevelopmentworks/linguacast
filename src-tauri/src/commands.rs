@@ -107,6 +107,19 @@ pub async fn prepare_media(
 }
 
 #[tauri::command]
+pub async fn prepare_local_media(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<crate::media::Job, String> {
+    crate::media::prepare_local_media(&app, &path).await
+}
+
+#[tauri::command]
+pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<crate::media::JobSummary>, String> {
+    crate::media::list_jobs(&app)
+}
+
+#[tauri::command]
 pub async fn list_channel_uploads(
     channel_url: String,
     limit: Option<u32>,
@@ -463,14 +476,25 @@ pub async fn dub_video(
 ) -> Result<DubResult, String> {
     let settings = crate::config::load_settings(&app)?;
 
-    let _ = app.emit(
-        "linguacast://progress",
-        serde_json::json!({
-            "stage": "dub",
-            "message": "元動画をダウンロード中…（初回のみ）",
-        }),
-    );
-    let video_path = crate::media::download_video(&work_dir, &source_url).await?;
+    // Local-file jobs use the source directly (no yt-dlp); audio-only sources
+    // still get a timed Japanese track, just without a video to mux into.
+    let source_is_local = std::path::Path::new(&source_url).is_file();
+    let video_path: Option<String> = if source_is_local {
+        if crate::media::is_audio_only_file(&source_url) {
+            None
+        } else {
+            Some(source_url.clone())
+        }
+    } else {
+        let _ = app.emit(
+            "linguacast://progress",
+            serde_json::json!({
+                "stage": "dub",
+                "message": "元動画をダウンロード中…（初回のみ）",
+            }),
+        );
+        Some(crate::media::download_video(&work_dir, &source_url).await?)
+    };
 
     let _ = app.emit(
         "linguacast://progress",

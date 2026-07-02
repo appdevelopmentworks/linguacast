@@ -15,6 +15,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // The sidecar manager owns the child process lifecycle and resolved port.
             let manager = Arc::new(SidecarManager::new());
@@ -55,7 +56,9 @@ pub fn run() {
             commands::set_google_tts_key,
             commands::has_google_tts_key,
             commands::dub_video,
-            commands::share_file
+            commands::share_file,
+            commands::prepare_local_media,
+            commands::list_jobs
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -132,6 +132,7 @@ npm run format:check    # prettier --check .
 # Rust (src-tauri)
 cargo fmt --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+cargo test --manifest-path src-tauri/Cargo.toml --lib   # delivery server tests etc.
 # Python (sidecar) — ruff run ephemerally via uvx (not a runtime dep)
 uvx ruff check sidecar
 uvx ruff format sidecar
