@@ -15,13 +15,25 @@ _tasks: dict[str, dict] = {}
 _TTL_SEC = 3600.0
 
 
-def update(task_id: str | None, stage: str, done: float, total: float) -> None:
-    """Record progress; no-op when the caller did not request tracking."""
+def update(
+    task_id: str | None, stage: str, done: float, total: float, detail: str | None = None
+) -> None:
+    """Record progress; no-op when the caller did not request tracking.
+
+    ``detail`` names the RESOLVED backend (tier/model/engine) so the UI shows
+    what is actually running, not the preferred setting.
+    """
     if not task_id:
         return
     now = time.time()
     with _lock:
-        _tasks[task_id] = {"stage": stage, "done": done, "total": total, "ts": now}
+        _tasks[task_id] = {
+            "stage": stage,
+            "done": done,
+            "total": total,
+            "detail": detail,
+            "ts": now,
+        }
         stale = [k for k, v in _tasks.items() if v["ts"] < now - _TTL_SEC]
         for k in stale:
             del _tasks[k]

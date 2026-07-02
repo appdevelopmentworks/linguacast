@@ -37,6 +37,21 @@ class ProgressResponse(BaseModel):
     stage: str | None = None
     done: float | None = None
     total: float | None = None
+    # Resolved backend shown to the user (e.g. クラウド (OpenRouter): slug).
+    detail: str | None = None
+
+
+# Japanese labels for resolved tiers/engines shown in progress messages.
+TIER_LABELS = {
+    "ollama": "ローカル (Ollama)",
+    "lmstudio": "ローカル (LM Studio)",
+    "openrouter": "クラウド (OpenRouter)",
+}
+ENGINE_LABELS = {
+    "voicevox": "VOICEVOX",
+    "edge": "Edge TTS",
+    "google": "Google Cloud TTS",
+}
 
 
 @app.get("/progress/{task_id}", response_model=ProgressResponse)
@@ -48,7 +63,11 @@ def progress_status(task_id: str) -> ProgressResponse:
     if entry is None:
         return ProgressResponse(found=False)
     return ProgressResponse(
-        found=True, stage=entry["stage"], done=entry["done"], total=entry["total"]
+        found=True,
+        stage=entry["stage"],
+        done=entry["done"],
+        total=entry["total"],
+        detail=entry.get("detail"),
     )
 
 
@@ -235,8 +254,11 @@ def translate_srt_endpoint(req: TranslateSrtRequest) -> TranslateSrtResponse:
 
     from app import progress as progress_registry
 
+    tier_label = TIER_LABELS.get(backend.tier, backend.tier)
+    resolved = f"{tier_label}: {backend.model}"
+
     def report(done: float, total: float) -> None:
-        progress_registry.update(req.task_id, "translate", done, total)
+        progress_registry.update(req.task_id, "translate", done, total, detail=resolved)
 
     try:
         result = service.translate_srt(
@@ -313,8 +335,10 @@ def summarize_script(req: SummarizeRequest) -> SummarizeResponse:
 
     from app import progress as progress_registry
 
+    resolved_sum = f"{TIER_LABELS.get(backend.tier, backend.tier)}: {backend.model}"
+
     def report(done: float, total: float) -> None:
-        progress_registry.update(req.task_id, "summarize", done, total)
+        progress_registry.update(req.task_id, "summarize", done, total, detail=resolved_sum)
 
     try:
         result = summarize_service.generate_script(
@@ -466,8 +490,10 @@ def tts_synthesize(req: SynthesizeRequest) -> SynthesizeResponse:
 
     from app import progress as progress_registry
 
+    engine_label = ENGINE_LABELS.get(engine, engine)
+
     def report(done: float, total: float) -> None:
-        progress_registry.update(req.task_id, "tts", done, total)
+        progress_registry.update(req.task_id, "tts", done, total, detail=engine_label)
 
     try:
         result = tts_service.synthesize_lines(
@@ -553,8 +579,10 @@ def dub_render(req: DubRequest) -> DubResponse:
 
     from app import progress as progress_registry
 
+    dub_engine_label = ENGINE_LABELS.get(engine, engine)
+
     def report(done: float, total: float) -> None:
-        progress_registry.update(req.task_id, "dub", done, total)
+        progress_registry.update(req.task_id, "dub", done, total, detail=dub_engine_label)
 
     try:
         result = dub_service.render_dub(

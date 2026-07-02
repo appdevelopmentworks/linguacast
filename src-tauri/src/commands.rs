@@ -260,7 +260,7 @@ pub async fn translate_srt(
         "linguacast://progress",
         serde_json::json!({
             "stage": "translate",
-            "message": format!("和訳中…（モデル: {chosen_model}）"),
+            "message": "和訳中…（バックエンドを解決しています）",
         }),
     );
 
@@ -279,12 +279,7 @@ pub async fn translate_srt(
         "task_id": task_id,
     });
 
-    let poller = spawn_progress_poller(
-        &app,
-        manager.base_url(),
-        task_id,
-        format!("和訳中…（モデル: {chosen_model}）"),
-    );
+    let poller = spawn_progress_poller(&app, manager.base_url(), task_id, "和訳中…".to_string());
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(6 * 3600))
@@ -663,11 +658,16 @@ fn spawn_progress_poller(
                 continue;
             }
             let percent = (done / total * 100.0).clamp(0.0, 100.0);
+            // Prefer the sidecar-reported RESOLVED backend over the label.
+            let message = match v["detail"].as_str() {
+                Some(d) if !d.is_empty() => format!("{label}（{d}）（{percent:.0}%）"),
+                _ => format!("{label}（{percent:.0}%）"),
+            };
             let _ = app.emit(
                 "linguacast://progress",
                 serde_json::json!({
                     "stage": v["stage"],
-                    "message": format!("{label}（{percent:.0}%）"),
+                    "message": message,
                     "percent": percent,
                 }),
             );
