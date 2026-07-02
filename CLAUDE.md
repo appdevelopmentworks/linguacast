@@ -139,6 +139,16 @@ uvx ruff format sidecar
 
 # --- App icon (after editing src-tauri/app-icon.png) ---
 npm run tauri -- icon src-tauri/app-icon.png
+
+# --- Release build / installer ---
+# 1) package the sidecar into a single binary (cloud/Edge build; no
+#    faster-whisper — packaged builds transcribe via Groq). Places it in
+#    src-tauri/binaries/ (gitignored; CI rebuilds it).
+uv run --directory sidecar --with pyinstaller python ../scripts/build-sidecar.py
+# 2) build the installers (out/ is static-exported first)
+npm run tauri build                     # nsis + msi (Windows) / dmg (macOS)
+# artifacts: src-tauri/target/release/bundle/{nsis,msi,dmg}/
+# CI: push a tag (git tag v0.1.0 && git push origin v0.1.0) -> .github/workflows/release.yml
 ```
 
 ## Guardrails

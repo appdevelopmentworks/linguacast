@@ -27,8 +27,9 @@ pub fn run() {
             // Spawn the FastAPI sidecar and health-check it in the background so the
             // window opens immediately. Per the fallback contract, a failed start is
             // a warning (logged + surfaced via ping_sidecar), never a crash.
+            let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(err) = manager.start().await {
+                if let Err(err) = manager.start(&handle).await {
                     eprintln!("[sidecar] failed to start: {err}");
                 }
             });

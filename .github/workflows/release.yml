@@ -1,0 +1,69 @@
+name: Release
+
+# Push a version tag to build installers and publish a GitHub Release:
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+          - platform: macos-latest # Apple Silicon
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install frontend deps
+        run: npm ci
+
+      # Package the sidecar (cloud/Edge build — no faster-whisper/CUDA).
+      - name: Sync sidecar deps
+        run: uv sync --directory sidecar --extra llm --extra tts
+
+      - name: Build sidecar binary
+        run: uv run --directory sidecar --with pyinstaller python ../scripts/build-sidecar.py
+
+      - name: Build app + publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "linguacast ${{ github.ref_name }}"
+          releaseBody: |
+            外国語の音声コンテンツを日本語に翻訳・音声化するデスクトップアプリ。
+
+            ## インストール
+            - Windows: `linguacast_*_x64-setup.exe`
+            - macOS: `linguacast_*.dmg`
+
+            初回起動前に ffmpeg / yt-dlp のインストールを推奨します（docs/manual.md 参照）。
+            未署名のため、Windows SmartScreen / macOS Gatekeeper の警告は「実行を許可」で回避してください。
+          releaseDraft: true
+          prerelease: false

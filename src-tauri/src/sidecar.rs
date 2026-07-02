@@ -1,15 +1,19 @@
 //! Lifecycle management for the Python FastAPI sidecar.
 //!
-//! In development the sidecar lives next to `src-tauri` in the repo and is run
-//! via `uv run`. Production packaging (PyInstaller -> Tauri externalBin) is a
-//! later-session concern; only the dev path is wired here.
+//! Development runs it from the repo via `uv run`. Release runs the PyInstaller
+//! single-file binary bundled as a Tauri resource (`binaries/`). Both spawn on
+//! a free loopback port and are health-checked before use.
 
+#[cfg(debug_assertions)]
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
+use tauri::AppHandle;
+#[cfg(not(debug_assertions))]
+use tauri::Manager;
 use tokio::process::{Child, Command};
 use tokio::time::{sleep, Instant};
 
@@ -40,27 +44,18 @@ impl SidecarManager {
     }
 
     /// Spawn the sidecar on a free loopback port and wait until it is healthy.
-    pub async fn start(&self) -> Result<(), String> {
+    pub async fn start(&self, app: &AppHandle) -> Result<(), String> {
         let port = pick_free_port().map_err(|e| format!("could not find a free port: {e}"))?;
-        let dir = sidecar_dir()?;
 
-        let mut cmd = Command::new("uv");
-        cmd.arg("run")
-            .arg("uvicorn")
-            .arg("app.main:app")
-            .arg("--host")
-            .arg("127.0.0.1")
-            .arg("--port")
-            .arg(port.to_string())
-            .current_dir(&dir)
-            .stdout(Stdio::inherit())
+        let mut cmd = build_command(app, port)?;
+        cmd.stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             // Backstop against orphaned processes if shutdown() is missed.
             .kill_on_drop(true);
 
         let child = cmd
             .spawn()
-            .map_err(|e| format!("failed to spawn `uv run uvicorn` (is uv installed?): {e}"))?;
+            .map_err(|e| format!("failed to spawn sidecar: {e}"))?;
 
         self.port.store(port, Ordering::SeqCst);
         {
@@ -88,6 +83,51 @@ fn pick_free_port() -> std::io::Result<u16> {
     Ok(listener.local_addr()?.port())
 }
 
+/// Dev: `uv run uvicorn` from the repo sidecar dir. Release: the bundled
+/// PyInstaller binary from the app's resource directory.
+fn build_command(app: &AppHandle, port: u16) -> Result<Command, String> {
+    #[cfg(debug_assertions)]
+    {
+        let _ = app;
+        let dir = sidecar_dir()?;
+        let mut cmd = Command::new("uv");
+        cmd.arg("run")
+            .arg("uvicorn")
+            .arg("app.main:app")
+            .arg("--host")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg(port.to_string())
+            .current_dir(&dir);
+        Ok(cmd)
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        #[cfg(windows)]
+        const BIN: &str = "linguacast-sidecar.exe";
+        #[cfg(not(windows))]
+        const BIN: &str = "linguacast-sidecar";
+
+        let exe = app
+            .path()
+            .resource_dir()
+            .map_err(|e| format!("cannot resolve resource dir: {e}"))?
+            .join("binaries")
+            .join(BIN);
+        if !exe.exists() {
+            return Err(format!("bundled sidecar not found: {}", exe.display()));
+        }
+        let mut cmd = Command::new(&exe);
+        cmd.arg("--host")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg(port.to_string());
+        Ok(cmd)
+    }
+}
+
+#[cfg(debug_assertions)]
 fn sidecar_dir() -> Result<PathBuf, String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dir = manifest_dir

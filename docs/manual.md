@@ -108,14 +108,30 @@ APIキー不要・インターネット接続のみ必要）で動作します**
 
 ## 3. linguacast のインストール
 
-配布されたインストーラー（`linguacast_0.1.0_x64-setup.exe`）を実行し、指示に従ってください。
+[GitHub Releases](https://github.com/appdevelopmentworks/linguacast/releases) から
+最新版をダウンロードします:
 
-- **アプリ本体**: 標準のアプリフォルダにインストールされます（スタートメニューに登録）。
-- **生成物（音声・字幕・動画）の保存先**: `ダウンロード\linguacast\` フォルダです。
-  各処理（ジョブ）ごとにサブフォルダが作られ、アプリの「📁 開く」ボタンからいつでも開けます。
+- **Windows**: `linguacast_x.y.z_x64-setup.exe`（NSIS）または `.msi`
+- **macOS**: `linguacast_x.y.z_aarch64.dmg`
 
-> 開発者向け: インストーラーは `npm run tauri build` で作成します。
-> 出力先は `src-tauri\target\release\bundle\nsis\`（.exe）と `bundle\msi\`（.msi）です。
+インストーラーを実行して指示に従ってください。
+
+> ⚠️ 現在アプリは**未署名**のため、初回起動時に警告が出ます:
+> - Windows: SmartScreen の画面で「詳細情報」→「実行」
+> - macOS: 右クリック→「開く」（または システム設定 → プライバシーとセキュリティ で許可）
+
+- **アプリ本体**は標準のアプリフォルダにインストールされます（スタートメニュー登録）。
+- **生成物（音声・字幕・動画）の保存先**は `ダウンロード\linguacast\` フォルダです。
+  各処理ごとにサブフォルダが作られ、アプリの「📁 開く」ボタンからいつでも開けます。
+- **文字起こしについて**: 配布版のインストーラーには軽量化のためローカルの Whisper は
+  含まれていません。配布版では **Groq（クラウド・無料枠）** で文字起こしします
+  （設定は上記 (2.5) 参照）。GPU でローカル文字起こしをしたいパワーユーザーは、
+  ソースから `npm run tauri dev` で起動してください。
+
+> 開発者向け: リリースは Git タグを push すると GitHub Actions が自動ビルドします
+> （`git tag v0.1.0 && git push origin v0.1.0`）。ローカルビルドは
+> `uv run --directory sidecar --with pyinstaller python ../scripts/build-sidecar.py`
+> でサイドカーを固めてから `npm run tauri build` を実行します。
 
 ---
 

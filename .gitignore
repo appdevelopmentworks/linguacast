@@ -8,6 +8,11 @@ next-env.d.ts
 # Rust / Tauri
 src-tauri/target/
 src-tauri/gen/schemas/
+# Bundled sidecar binary (built by scripts/build-sidecar.py; rebuilt in CI)
+src-tauri/binaries/
+sidecar/build/
+sidecar/dist/
+sidecar/*.spec
 
 # Python sidecar
 sidecar/.venv/
