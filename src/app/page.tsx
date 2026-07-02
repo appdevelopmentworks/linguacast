@@ -126,33 +126,27 @@ export default function Home() {
   const [edgeVoiceList, setEdgeVoiceList] = useState<EdgeVoice[]>([]);
   const [stt, setStt] = useState<SttInfo | null>(null);
 
-  // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
+  // One-time load of Rust-only data (no sidecar needed): deps, presets,
+  // settings, jobs, key presence. Live engine status is handled by the poller
+  // below so it survives a slow sidecar startup.
   useEffect(() => {
     const init = async () => {
-      const [d, p, h, s, b, t, j, ok, gk, qk, si] = await Promise.allSettled([
+      const [d, p, s, j, ok, gk, qk] = await Promise.allSettled([
         checkDependencies(),
         getPresets(),
-        pingSidecar(),
         getSettings(),
-        translateBackends(),
-        ttsStatus(),
         listJobs(),
         hasOpenrouterKey(),
         hasGoogleTtsKey(),
         hasGroqKey(),
-        sttInfo(),
       ]);
       if (d.status === "fulfilled") setDeps(d.value);
       if (p.status === "fulfilled") setPresets(p.value);
-      if (h.status === "fulfilled") setHealth(h.value);
       if (s.status === "fulfilled") setSettings(s.value);
-      if (b.status === "fulfilled") setBackends(b.value);
-      if (t.status === "fulfilled") setTts(t.value);
       if (j.status === "fulfilled") setJobs(j.value);
       if (ok.status === "fulfilled") setOrKeySet(ok.value);
       if (gk.status === "fulfilled") setGoogleKeySet(gk.value);
       if (qk.status === "fulfilled") setGroqKeySet(qk.value);
-      if (si.status === "fulfilled") setStt(si.value);
     };
     void init();
   }, []);
@@ -447,17 +441,31 @@ export default function Home() {
       .catch(() => {});
   }, [showSettings, groqKeySet, groqLlmModels.length, settings]);
 
-  // Periodic engine health refresh for the header indicators (LLM / VOICEVOX).
+  // Live engine status poller (footer + LLM/VOICEVOX/Whisper chips). Polls the
+  // sidecar fast (1.5s) while it is still starting — the packaged binary can
+  // become ready a couple seconds after the window loads — then settles to 20s
+  // once connected. This keeps indicators from getting stuck red on a slow
+  // startup and reflects engines started/stopped after launch.
   useEffect(() => {
-    const timer = setInterval(() => {
-      void translateBackends()
-        .then(setBackends)
-        .catch(() => {});
-      void ttsStatus()
-        .then(setTts)
-        .catch(() => {});
-    }, 20000);
-    return () => clearInterval(timer);
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      const h = await pingSidecar().catch(() => null);
+      if (h) setHealth(h);
+      const reachable = h?.reachable ?? false;
+      if (reachable) {
+        const [b, t, s] = await Promise.allSettled([translateBackends(), ttsStatus(), sttInfo()]);
+        if (b.status === "fulfilled") setBackends(b.value);
+        if (t.status === "fulfilled") setTts(t.value);
+        if (s.status === "fulfilled") setStt(s.value);
+      }
+      if (!stopped) timer = setTimeout(() => void tick(), reachable ? 20000 : 1500);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   // Subscribe to pipeline progress events (setState in an external callback).

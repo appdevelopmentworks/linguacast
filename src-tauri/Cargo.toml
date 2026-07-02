@@ -1,6 +1,6 @@
 [package]
 name = "linguacast"
-version = "0.1.0"
+version = "0.1.1"
 description = "Turn foreign-language audio into Japanese audio, local-first with cloud fallbacks."
 authors = ["linguacast"]
 edition = "2021"
