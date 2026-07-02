@@ -83,6 +83,8 @@ export type Settings = {
   edge_guest_voice: string;
   stt_engine: string;
   groq_model: string;
+  cloud_llm_provider: string;
+  groq_llm_model: string;
 };
 
 export type TierInfo = { available: boolean; models: string[] };
@@ -330,6 +332,10 @@ export type OpenRouterModel = { id: string; name: string };
 
 export function openrouterModels(): Promise<OpenRouterModel[]> {
   return invoke<OpenRouterModel[]>("openrouter_models");
+}
+
+export function groqModels(): Promise<OpenRouterModel[]> {
+  return invoke<OpenRouterModel[]>("groq_models");
 }
 
 export const TTS_ENGINE_LABELS: Record<string, string> = {

@@ -46,6 +46,7 @@ TIER_LABELS = {
     "ollama": "ローカル (Ollama)",
     "lmstudio": "ローカル (LM Studio)",
     "openrouter": "クラウド (OpenRouter)",
+    "groq": "クラウド (Groq)",
 }
 ENGINE_LABELS = {
     "voicevox": "VOICEVOX",
@@ -230,9 +231,12 @@ class TranslateSrtRequest(BaseModel):
     output_dir: str
     model: str | None = None  # preferred model slug/name
     source_lang: str = "en"
-    forced_tier: str | None = None  # pin a tier for testing (ollama/lmstudio/openrouter)
+    forced_tier: str | None = None  # pin a tier for testing (ollama/lmstudio/openrouter/groq)
     openrouter_key: str | None = None
     openrouter_model: str | None = None
+    cloud_provider: str = "openrouter"
+    groq_key: str | None = None
+    groq_llm_model: str | None = None
     task_id: str | None = None
 
 
@@ -267,6 +271,9 @@ def translate_srt_endpoint(req: TranslateSrtRequest) -> TranslateSrtResponse:
             forced_tier=req.forced_tier,
             openrouter_key=req.openrouter_key,
             openrouter_model=req.openrouter_model,
+            cloud_provider=req.cloud_provider,
+            groq_key=req.groq_key,
+            groq_model=req.groq_llm_model,
         )
     except rt.NoBackendAvailable as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -308,6 +315,9 @@ class SummarizeRequest(BaseModel):
     forced_tier: str | None = None
     openrouter_key: str | None = None
     openrouter_model: str | None = None
+    cloud_provider: str = "openrouter"
+    groq_key: str | None = None
+    groq_llm_model: str | None = None
     # Test hook: shrink the single-pass budget to force hierarchical mode.
     single_pass_budget: int | None = None
     task_id: str | None = None
@@ -348,6 +358,9 @@ def summarize_script(req: SummarizeRequest) -> SummarizeResponse:
             openrouter_key=req.openrouter_key,
             openrouter_model=req.openrouter_model,
             require_general=True,
+            cloud_provider=req.cloud_provider,
+            groq_key=req.groq_key,
+            groq_model=req.groq_llm_model,
         )
     except rt.NoBackendAvailable as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -539,6 +552,11 @@ class DubRequest(BaseModel):
     style_id: int = 3
     video_path: str | None = None
     edge_voice: str | None = None
+    cloud_provider: str = "openrouter"
+    openrouter_key: str | None = None
+    openrouter_model: str | None = None
+    groq_key: str | None = None
+    groq_llm_model: str | None = None
     task_id: str | None = None
 
 
@@ -592,7 +610,14 @@ def dub_render(req: DubRequest) -> DubResponse:
     # Concise-rewrite backend is best-effort: without one the fit chain still
     # runs (speedScale/stretch/trim), quality just degrades on dense speech.
     try:
-        rewrite_backend = rt.resolve_backend(require_general=True)
+        rewrite_backend = rt.resolve_backend(
+            require_general=True,
+            openrouter_key=req.openrouter_key,
+            openrouter_model=req.openrouter_model,
+            cloud_provider=req.cloud_provider,
+            groq_key=req.groq_key,
+            groq_model=req.groq_llm_model,
+        )
     except rt.NoBackendAvailable:
         rewrite_backend = None
 

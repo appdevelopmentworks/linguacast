@@ -65,7 +65,8 @@ pub fn run() {
             commands::edge_voices,
             commands::set_groq_key,
             commands::has_groq_key,
-            commands::stt_info
+            commands::stt_info,
+            commands::groq_models
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

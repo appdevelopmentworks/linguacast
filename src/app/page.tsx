@@ -12,6 +12,7 @@ import {
   FIT_METHOD_LABELS,
   getPresets,
   getSettings,
+  groqModels,
   hasGoogleTtsKey,
   hasGroqKey,
   hasOpenrouterKey,
@@ -121,6 +122,7 @@ export default function Home() {
   const [newPreset, setNewPreset] = useState({ category: "", label: "", url: "" });
   const [dragActive, setDragActive] = useState(false);
   const [orModels, setOrModels] = useState<OpenRouterModel[]>([]);
+  const [groqLlmModels, setGroqLlmModels] = useState<OpenRouterModel[]>([]);
   const [edgeVoiceList, setEdgeVoiceList] = useState<EdgeVoice[]>([]);
   const [stt, setStt] = useState<SttInfo | null>(null);
 
@@ -427,6 +429,24 @@ export default function Home() {
       .catch(() => {});
   }, [showSettings, edgeVoiceList.length]);
 
+  // Fetch the Groq chat-model catalogue when relevant; auto-pick a Qwen model
+  // the first time so beginners get a sensible default without typing.
+  useEffect(() => {
+    if (!showSettings || !groqKeySet || groqLlmModels.length > 0) return;
+    if (settings?.cloud_llm_provider !== "groq") return;
+    void groqModels()
+      .then((models) => {
+        setGroqLlmModels(models);
+        if (settings && !settings.groq_llm_model && models.length > 0) {
+          const qwen = models.find((m) => m.id.toLowerCase().includes("qwen")) ?? models[0];
+          const next = { ...settings, groq_llm_model: qwen.id };
+          setSettings(next);
+          void saveSettings(next);
+        }
+      })
+      .catch(() => {});
+  }, [showSettings, groqKeySet, groqLlmModels.length, settings]);
+
   // Periodic engine health refresh for the header indicators (LLM / VOICEVOX).
   useEffect(() => {
     const timer = setInterval(() => {
@@ -695,7 +715,14 @@ export default function Home() {
         title: `Ollama 未起動のため LM Studio（ローカル）を使用します。翻訳モデル: ${model ?? "なし"}`,
       };
     }
-    if (orKeySet && settings?.openrouter_model) {
+    if (settings?.cloud_llm_provider === "groq" && groqKeySet && settings.groq_llm_model) {
+      return {
+        on: true,
+        label: `Groq｜${settings.groq_llm_model}`,
+        title: "ローカルLLMが見つからないため、クラウド（Groq・無料枠 1,000件/日）を使用します",
+      };
+    }
+    if (settings?.cloud_llm_provider !== "groq" && orKeySet && settings?.openrouter_model) {
       return {
         on: true,
         label: `OpenRouter｜${settings.openrouter_model}`,
@@ -706,7 +733,7 @@ export default function Home() {
       on: false,
       label: "LLM なし",
       title:
-        "翻訳・要約に使えるLLMがありません。Ollama / LM Studio を起動するか、設定で OpenRouter を登録してください",
+        "翻訳・要約に使えるLLMがありません。Ollama / LM Studio を起動するか、設定でクラウドLLM（OpenRouter / Groq）を登録してください",
     };
   })();
 
@@ -913,50 +940,96 @@ export default function Home() {
               ))}
             </select>
 
-            <label className="settings-label">
-              OpenRouter APIキー
-              <span className={orKeySet ? "key-state key-ok" : "key-state"}>
-                {orKeySet ? "保存済み" : "未設定"}
-              </span>
-            </label>
-            <div className="key-row">
-              <input
-                className="url-input key-input"
-                type="password"
-                placeholder="sk-or-...（空で保存するとクリア）"
-                value={orKeyInput}
-                onChange={(e) => setOrKeyInput(e.target.value)}
-              />
-              <button className="start-btn" onClick={() => void saveOrKey()}>
-                保存
-              </button>
+            <label className="settings-label">クラウドLLM プロバイダ</label>
+            <div>
+              <select
+                className="model-select"
+                value={settings.cloud_llm_provider}
+                onChange={(e) => changeSetting({ cloud_llm_provider: e.target.value })}
+              >
+                <option value="openrouter">OpenRouter（多数モデル・従量課金）</option>
+                <option value="groq">Groq（高速・無料枠 1,000件/日）</option>
+              </select>
+              <div className="mode-note">
+                ローカルLLM（Ollama / LM Studio）が使えない時のフォールバック先です
+              </div>
             </div>
 
-            <label className="settings-label">OpenRouter モデル</label>
-            <div>
-              <input
-                className="url-input key-input"
-                type="text"
-                list="openrouter-model-list"
-                placeholder={
-                  orModels.length > 0
-                    ? "クリックして選択（入力で絞り込み）"
-                    : "例: anthropic/claude-sonnet-5"
-                }
-                value={settings.openrouter_model ?? ""}
-                onChange={(e) => changeSetting({ openrouter_model: e.target.value || null })}
-              />
-              <datalist id="openrouter-model-list">
-                {orModels.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </datalist>
-              {orModels.length > 0 && (
-                <div className="mode-note">{orModels.length} モデルから選択できます</div>
-              )}
-            </div>
+            {settings.cloud_llm_provider === "groq" ? (
+              <>
+                <label className="settings-label">Groq LLM モデル</label>
+                <div>
+                  <select
+                    className="model-select"
+                    value={settings.groq_llm_model}
+                    onChange={(e) => changeSetting({ groq_llm_model: e.target.value })}
+                    disabled={groqLlmModels.length === 0}
+                  >
+                    {groqLlmModels.length === 0 && (
+                      <option value={settings.groq_llm_model}>
+                        {settings.groq_llm_model ||
+                          (groqKeySet ? "（取得中…）" : "（Groq APIキーを登録してください）")}
+                      </option>
+                    )}
+                    {groqLlmModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mode-note">
+                    APIキーは文字起こし用と共通（下の Groq APIキー欄で登録）
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="settings-label">
+                  OpenRouter APIキー
+                  <span className={orKeySet ? "key-state key-ok" : "key-state"}>
+                    {orKeySet ? "保存済み" : "未設定"}
+                  </span>
+                </label>
+                <div className="key-row">
+                  <input
+                    className="url-input key-input"
+                    type="password"
+                    placeholder="sk-or-...（空で保存するとクリア）"
+                    value={orKeyInput}
+                    onChange={(e) => setOrKeyInput(e.target.value)}
+                  />
+                  <button className="start-btn" onClick={() => void saveOrKey()}>
+                    保存
+                  </button>
+                </div>
+
+                <label className="settings-label">OpenRouter モデル</label>
+                <div>
+                  <input
+                    className="url-input key-input"
+                    type="text"
+                    list="openrouter-model-list"
+                    placeholder={
+                      orModels.length > 0
+                        ? "クリックして選択（入力で絞り込み）"
+                        : "例: anthropic/claude-sonnet-5"
+                    }
+                    value={settings.openrouter_model ?? ""}
+                    onChange={(e) => changeSetting({ openrouter_model: e.target.value || null })}
+                  />
+                  <datalist id="openrouter-model-list">
+                    {orModels.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </datalist>
+                  {orModels.length > 0 && (
+                    <div className="mode-note">{orModels.length} モデルから選択できます</div>
+                  )}
+                </div>
+              </>
+            )}
 
             <label className="settings-label">
               Google Cloud TTS APIキー

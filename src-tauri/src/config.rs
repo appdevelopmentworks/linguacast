@@ -127,6 +127,10 @@ pub struct Settings {
     pub stt_engine: String,
     /// Groq Whisper model (turbo is the fast, near-equal-accuracy default).
     pub groq_model: String,
+    /// Cloud LLM provider for the third fallback tier: "openrouter" | "groq".
+    pub cloud_llm_provider: String,
+    /// Groq LLM model id (picked from the Groq catalogue in settings).
+    pub groq_llm_model: String,
 }
 
 impl Default for Settings {
@@ -141,6 +145,8 @@ impl Default for Settings {
             edge_guest_voice: "ja-JP-KeitaNeural".to_string(),
             stt_engine: "local".to_string(),
             groq_model: "whisper-large-v3-turbo".to_string(),
+            cloud_llm_provider: "openrouter".to_string(),
+            groq_llm_model: String::new(),
         }
     }
 }

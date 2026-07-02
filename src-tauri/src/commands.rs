@@ -267,6 +267,12 @@ pub async fn translate_srt(
     // The cloud key only travels Rust -> sidecar over loopback, never to the UI.
     let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
 
+    let groq_llm_key = if settings.cloud_llm_provider == "groq" {
+        crate::secrets::get_secret(GROQ_KEY_NAME)?
+    } else {
+        None
+    };
+
     let task_id = new_task_id();
     let url = format!("{}/translate/srt", manager.base_url());
     let body = serde_json::json!({
@@ -276,6 +282,9 @@ pub async fn translate_srt(
         "source_lang": settings.source_lang,
         "openrouter_key": openrouter_key,
         "openrouter_model": settings.openrouter_model,
+        "cloud_provider": settings.cloud_llm_provider,
+        "groq_key": groq_llm_key,
+        "groq_llm_model": settings.groq_llm_model,
         "task_id": task_id,
     });
 
@@ -344,6 +353,12 @@ pub async fn summarize_script(
 
     let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
 
+    let groq_llm_key = if settings.cloud_llm_provider == "groq" {
+        crate::secrets::get_secret(GROQ_KEY_NAME)?
+    } else {
+        None
+    };
+
     let task_id = new_task_id();
     let url = format!("{}/summarize/script", manager.base_url());
     let body = serde_json::json!({
@@ -353,6 +368,9 @@ pub async fn summarize_script(
         "chapters": chapters,
         "openrouter_key": openrouter_key,
         "openrouter_model": settings.openrouter_model,
+        "cloud_provider": settings.cloud_llm_provider,
+        "groq_key": groq_llm_key,
+        "groq_llm_model": settings.groq_llm_model,
         "task_id": task_id,
     });
 
@@ -414,6 +432,58 @@ pub fn set_groq_key(key: String) -> Result<(), String> {
 #[tauri::command]
 pub fn has_groq_key() -> Result<bool, String> {
     Ok(crate::secrets::get_secret(GROQ_KEY_NAME)?.is_some())
+}
+
+/// Chat models available on Groq (needs the stored key; whisper/tts/guard
+/// entries are filtered out).
+#[tauri::command]
+pub async fn groq_models() -> Result<Vec<OpenRouterModel>, String> {
+    let key = crate::secrets::get_secret(GROQ_KEY_NAME)?
+        .ok_or_else(|| "Groq APIキーが未設定です。".to_string())?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+    let resp = client
+        .get("https://api.groq.com/openai/v1/models")
+        .bearer_auth(key)
+        .send()
+        .await
+        .map_err(|e| format!("Groq に接続できません: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Groq モデル一覧の取得に失敗しました ({})",
+            resp.status()
+        ));
+    }
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("invalid models response: {e}"))?;
+
+    let mut models: Vec<OpenRouterModel> = v["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    let id = m["id"].as_str()?.to_string();
+                    let lower = id.to_lowercase();
+                    if ["whisper", "tts", "guard", "playai"]
+                        .iter()
+                        .any(|k| lower.contains(k))
+                    {
+                        return None;
+                    }
+                    Some(OpenRouterModel {
+                        id: id.clone(),
+                        name: id,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(models)
 }
 
 // --- Session 5: TTS (VOICEVOX + cloud fallback) ---
@@ -623,6 +693,14 @@ pub async fn dub_video(
         }),
     );
 
+    // The concise-rewrite stage may need the cloud tier when locals are down.
+    let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
+    let groq_llm_key = if settings.cloud_llm_provider == "groq" {
+        crate::secrets::get_secret(GROQ_KEY_NAME)?
+    } else {
+        None
+    };
+
     let task_id = new_task_id();
     let url = format!("{}/dub/render", manager.base_url());
     let body = serde_json::json!({
@@ -631,6 +709,11 @@ pub async fn dub_video(
         "style_id": settings.narrator_voice,
         "edge_voice": settings.edge_narrator_voice,
         "video_path": video_path,
+        "openrouter_key": openrouter_key,
+        "openrouter_model": settings.openrouter_model,
+        "cloud_provider": settings.cloud_llm_provider,
+        "groq_key": groq_llm_key,
+        "groq_llm_model": settings.groq_llm_model,
         "task_id": task_id,
     });
 
