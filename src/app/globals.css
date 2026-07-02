@@ -334,7 +334,6 @@ body {
 }
 
 .start-btn {
-  margin-left: auto;
   padding: 9px 20px;
   font-size: 14px;
   font-weight: 600;
@@ -345,6 +344,17 @@ body {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* Single main button in the URL card stays right-aligned. */
+.controls-row .start-btn {
+  margin-left: auto;
+}
+
+/* In artifact rows, action buttons cluster together at the right edge
+   (only the first one takes the free space). */
+.artifact-row .start-btn:first-of-type {
+  margin-left: auto;
 }
 
 .start-btn:disabled {
