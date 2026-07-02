@@ -537,22 +537,18 @@ pub async fn dub_video(
 
 /// Open a job's working directory in the OS file manager (artifacts live in a
 /// hidden AppData path on Windows, so give users a one-click way in).
+///
+/// Uses the opener plugin (ShellExecute on Windows): spawning `explorer.exe`
+/// via CreateProcess can fail with 「場所が利用できません」 in some contexts.
 #[tauri::command]
-pub fn open_work_dir(path: String) -> Result<(), String> {
-    let dir = std::path::Path::new(&path);
-    if !dir.is_dir() {
+pub fn open_work_dir(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    if !std::path::Path::new(&path).is_dir() {
         return Err(format!("フォルダが見つかりません: {path}"));
     }
-
-    #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("explorer").arg(dir).spawn();
-    #[cfg(target_os = "macos")]
-    let result = std::process::Command::new("open").arg(dir).spawn();
-    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-    let result = std::process::Command::new("xdg-open").arg(dir).spawn();
-
-    result
-        .map(|_| ())
+    app.opener()
+        .open_path(&path, None::<&str>)
         .map_err(|e| format!("フォルダを開けませんでした: {e}"))
 }
 
