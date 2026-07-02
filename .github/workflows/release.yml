@@ -18,14 +18,14 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-          - platform: macos-latest # Apple Silicon
+          - platform: macos-15 # Apple Silicon (pinned; avoids macos-latest drift)
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
 
@@ -37,7 +37,7 @@ jobs:
           workspaces: src-tauri -> target
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8.2.0
 
       - name: Install frontend deps
         run: npm ci
