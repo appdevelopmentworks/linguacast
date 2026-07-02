@@ -13,6 +13,7 @@ import {
   getPresets,
   getSettings,
   hasGoogleTtsKey,
+  hasGroqKey,
   hasOpenrouterKey,
   listChannelUploads,
   listJobs,
@@ -25,6 +26,7 @@ import {
   savePresets,
   saveSettings,
   setGoogleTtsKey,
+  setGroqKey,
   setOpenrouterKey,
   shareFile,
   summarizeScript,
@@ -110,8 +112,10 @@ export default function Home() {
   const [resume, setResume] = useState<JobSummary | null>(null);
   const [orKeySet, setOrKeySet] = useState(false);
   const [googleKeySet, setGoogleKeySet] = useState(false);
+  const [groqKeySet, setGroqKeySet] = useState(false);
   const [orKeyInput, setOrKeyInput] = useState("");
   const [googleKeyInput, setGoogleKeyInput] = useState("");
+  const [groqKeyInput, setGroqKeyInput] = useState("");
   const [newPreset, setNewPreset] = useState({ category: "", label: "", url: "" });
   const [dragActive, setDragActive] = useState(false);
   const [orModels, setOrModels] = useState<OpenRouterModel[]>([]);
@@ -120,7 +124,7 @@ export default function Home() {
   // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
     const init = async () => {
-      const [d, p, h, s, b, t, j, ok, gk] = await Promise.allSettled([
+      const [d, p, h, s, b, t, j, ok, gk, qk] = await Promise.allSettled([
         checkDependencies(),
         getPresets(),
         pingSidecar(),
@@ -130,6 +134,7 @@ export default function Home() {
         listJobs(),
         hasOpenrouterKey(),
         hasGoogleTtsKey(),
+        hasGroqKey(),
       ]);
       if (d.status === "fulfilled") setDeps(d.value);
       if (p.status === "fulfilled") setPresets(p.value);
@@ -140,6 +145,7 @@ export default function Home() {
       if (j.status === "fulfilled") setJobs(j.value);
       if (ok.status === "fulfilled") setOrKeySet(ok.value);
       if (gk.status === "fulfilled") setGoogleKeySet(gk.value);
+      if (qk.status === "fulfilled") setGroqKeySet(qk.value);
     };
     void init();
   }, []);
@@ -327,6 +333,16 @@ export default function Home() {
       setError(String(e));
     }
   }, [googleKeyInput]);
+
+  const saveGroqKey = useCallback(async () => {
+    try {
+      await setGroqKey(groqKeyInput.trim());
+      setGroqKeyInput("");
+      setGroqKeySet(await hasGroqKey());
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [groqKeyInput]);
 
   const changeSetting = useCallback(
     (patch: Partial<Settings>) => {
@@ -706,6 +722,56 @@ export default function Home() {
           <div className="section-label">設定</div>
 
           <div className="settings-grid">
+            <label className="settings-label">文字起こしエンジン</label>
+            <div>
+              <select
+                className="model-select"
+                value={settings.stt_engine}
+                onChange={(e) => changeSetting({ stt_engine: e.target.value })}
+              >
+                <option value="local">ローカル（faster-whisper・GPU推奨）</option>
+                <option value="groq">クラウド（Groq Whisper・無料枠 2,000件/日）</option>
+              </select>
+              {settings.stt_engine === "groq" && !groqKeySet && (
+                <div className="mode-note">⚠ Groq APIキーを下で登録してください</div>
+              )}
+            </div>
+
+            {settings.stt_engine === "groq" && (
+              <>
+                <label className="settings-label">Groq Whisper モデル</label>
+                <select
+                  className="model-select"
+                  value={settings.groq_model}
+                  onChange={(e) => changeSetting({ groq_model: e.target.value })}
+                >
+                  <option value="whisper-large-v3-turbo">
+                    whisper-large-v3-turbo（推奨・高速）
+                  </option>
+                  <option value="whisper-large-v3">whisper-large-v3（最高精度）</option>
+                </select>
+              </>
+            )}
+
+            <label className="settings-label">
+              Groq APIキー
+              <span className={groqKeySet ? "key-state key-ok" : "key-state"}>
+                {groqKeySet ? "保存済み" : "未設定"}
+              </span>
+            </label>
+            <div className="key-row">
+              <input
+                className="url-input key-input"
+                type="password"
+                placeholder="gsk_...（空で保存するとクリア）"
+                value={groqKeyInput}
+                onChange={(e) => setGroqKeyInput(e.target.value)}
+              />
+              <button className="start-btn" onClick={() => void saveGroqKey()}>
+                保存
+              </button>
+            </div>
+
             <label className="settings-label">翻訳モデル</label>
             <select
               className="model-select"

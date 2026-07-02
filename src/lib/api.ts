@@ -81,6 +81,8 @@ export type Settings = {
   guest_voice: number;
   edge_narrator_voice: string;
   edge_guest_voice: string;
+  stt_engine: string;
+  groq_model: string;
 };
 
 export type TierInfo = { available: boolean; models: string[] };
@@ -224,6 +226,14 @@ export function setGoogleTtsKey(key: string): Promise<void> {
 
 export function hasGoogleTtsKey(): Promise<boolean> {
   return invoke<boolean>("has_google_tts_key");
+}
+
+export function setGroqKey(key: string): Promise<void> {
+  return invoke("set_groq_key", { key });
+}
+
+export function hasGroqKey(): Promise<boolean> {
+  return invoke<boolean>("has_groq_key");
 }
 
 export function listChannelUploads(channelUrl: string, limit?: number): Promise<VideoEntry[]> {

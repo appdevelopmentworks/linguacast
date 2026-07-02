@@ -123,6 +123,10 @@ pub struct Settings {
     pub edge_narrator_voice: String,
     /// Edge TTS voice for guest lines in dialogue scripts.
     pub edge_guest_voice: String,
+    /// STT engine: "local" (faster-whisper) or "groq" (cloud, free tier).
+    pub stt_engine: String,
+    /// Groq Whisper model (turbo is the fast, near-equal-accuracy default).
+    pub groq_model: String,
 }
 
 impl Default for Settings {
@@ -135,6 +139,8 @@ impl Default for Settings {
             guest_voice: 2,
             edge_narrator_voice: "ja-JP-NanamiNeural".to_string(),
             edge_guest_voice: "ja-JP-KeitaNeural".to_string(),
+            stt_engine: "local".to_string(),
+            groq_model: "whisper-large-v3-turbo".to_string(),
         }
     }
 }

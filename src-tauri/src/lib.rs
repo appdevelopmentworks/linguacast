@@ -62,7 +62,9 @@ pub fn run() {
             commands::list_jobs,
             commands::open_work_dir,
             commands::openrouter_models,
-            commands::edge_voices
+            commands::edge_voices,
+            commands::set_groq_key,
+            commands::has_groq_key
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

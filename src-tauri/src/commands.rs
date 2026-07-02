@@ -383,6 +383,18 @@ pub async fn summarize_script(
     }
 }
 
+const GROQ_KEY_NAME: &str = "groq_api_key";
+
+#[tauri::command]
+pub fn set_groq_key(key: String) -> Result<(), String> {
+    crate::secrets::set_secret(GROQ_KEY_NAME, &key)
+}
+
+#[tauri::command]
+pub fn has_groq_key() -> Result<bool, String> {
+    Ok(crate::secrets::get_secret(GROQ_KEY_NAME)?.is_some())
+}
+
 // --- Session 5: TTS (VOICEVOX + cloud fallback) ---
 
 const GOOGLE_TTS_KEY_NAME: &str = "google_tts_api_key";
@@ -743,12 +755,22 @@ pub async fn transcribe(
         }),
     );
 
+    let settings = crate::config::load_settings(&app)?;
+    let groq_key = if settings.stt_engine == "groq" {
+        crate::secrets::get_secret(GROQ_KEY_NAME)?
+    } else {
+        None
+    };
+
     let task_id = new_task_id();
     let url = format!("{}/stt/transcribe", manager.base_url());
     let body = serde_json::json!({
         "audio_path": audio_path,
         "output_dir": output_dir,
         "model_size": model_size.unwrap_or_else(|| "large-v3".to_string()),
+        "engine": settings.stt_engine,
+        "groq_key": groq_key,
+        "groq_model": settings.groq_model,
         "task_id": task_id,
     });
 

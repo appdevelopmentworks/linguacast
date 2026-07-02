@@ -120,6 +120,10 @@ class TranscribeRequest(BaseModel):
     vad_filter: bool = True
     device: str | None = None
     compute_type: str | None = None
+    # "local" (faster-whisper etc.) or "groq" (cloud Whisper, free tier).
+    engine: str = "local"
+    groq_key: str | None = None
+    groq_model: str = "whisper-large-v3-turbo"
     task_id: str | None = None
 
 
@@ -164,11 +168,26 @@ def stt_transcribe(req: TranscribeRequest) -> TranscribeResponse:
 
     from app import progress as progress_registry
 
+    if req.engine == "groq":
+        if not req.groq_key:
+            raise HTTPException(
+                status_code=503,
+                detail="Groq APIキーが未設定です。設定画面で登録してください。",
+            )
+        stt_detail = f"クラウド (Groq): {req.groq_model}"
+    else:
+        stt_detail = "ローカル (faster-whisper)"
+
     def report(done: float, total: float) -> None:
-        progress_registry.update(req.task_id, "stt", done, total)
+        progress_registry.update(req.task_id, "stt", done, total, detail=stt_detail)
 
     try:
-        result = select_backend().transcribe(req.audio_path, options, report)
+        if req.engine == "groq":
+            from app.stt import groq_backend
+
+            result = groq_backend.transcribe(req.audio_path, req.groq_key, req.groq_model, report)
+        else:
+            result = select_backend().transcribe(req.audio_path, options, report)
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
         raise HTTPException(status_code=500, detail=str(e)) from e
 
