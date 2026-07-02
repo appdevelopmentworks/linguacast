@@ -16,6 +16,7 @@ import {
   listChannelUploads,
   listJobs,
   onProgress,
+  openWorkDir,
   pingSidecar,
   prepareLocalMedia,
   prepareMedia,
@@ -911,6 +912,13 @@ export default function Home() {
             <div className="artifact-row">
               <span className="artifact-label">作業フォルダ</span>
               <code className="path">{job.work_dir}</code>
+              <button
+                className="mini-btn"
+                onClick={() => void openWorkDir(job.work_dir).catch((e) => setError(String(e)))}
+                title="エクスプローラーで開く"
+              >
+                📁 開く
+              </button>
             </div>
             {job.artifacts.extracted_wav && (
               <div className="artifact-row">

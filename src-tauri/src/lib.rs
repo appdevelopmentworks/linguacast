@@ -58,7 +58,8 @@ pub fn run() {
             commands::dub_video,
             commands::share_file,
             commands::prepare_local_media,
-            commands::list_jobs
+            commands::list_jobs,
+            commands::open_work_dir
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

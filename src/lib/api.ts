@@ -288,6 +288,10 @@ export function shareFile(path: string): Promise<ShareInfo> {
   return invoke<ShareInfo>("share_file", { path });
 }
 
+export function openWorkDir(path: string): Promise<void> {
+  return invoke("open_work_dir", { path });
+}
+
 export const FIT_METHOD_LABELS: Record<string, string> = {
   natural: "そのまま",
   shortened: "短縮訳",

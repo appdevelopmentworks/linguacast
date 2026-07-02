@@ -535,6 +535,27 @@ pub async fn dub_video(
     }
 }
 
+/// Open a job's working directory in the OS file manager (artifacts live in a
+/// hidden AppData path on Windows, so give users a one-click way in).
+#[tauri::command]
+pub fn open_work_dir(path: String) -> Result<(), String> {
+    let dir = std::path::Path::new(&path);
+    if !dir.is_dir() {
+        return Err(format!("フォルダが見つかりません: {path}"));
+    }
+
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("explorer").arg(dir).spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(dir).spawn();
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(dir).spawn();
+
+    result
+        .map(|_| ())
+        .map_err(|e| format!("フォルダを開けませんでした: {e}"))
+}
+
 // --- Session 7: QR delivery ---
 
 #[tauri::command]
