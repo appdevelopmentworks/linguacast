@@ -493,6 +493,7 @@ class DubRequest(BaseModel):
     output_dir: str
     style_id: int = 3
     video_path: str | None = None
+    edge_voice: str | None = None
     task_id: str | None = None
 
 
@@ -510,6 +511,7 @@ class DubResponse(BaseModel):
     dubbed_audio_path: str
     dubbed_video_path: str | None = None
     segment_count: int
+    engine: str = "voicevox"
     fit_summary: dict[str, int]
     fits: list[SegmentFitModel]
 
@@ -526,13 +528,19 @@ def dub_render(req: DubRequest) -> DubResponse:
     if req.video_path and not os.path.exists(req.video_path):
         raise HTTPException(status_code=404, detail=f"video not found: {req.video_path}")
 
-    # Dub mode is VOICEVOX-only in v0.1 (speedScale is part of the fit chain).
-    if voicevox.health() is None:
+    # Engine fallback for dub: VOICEVOX (speedScale) -> Edge TTS (rate).
+    from app.tts.cloud import edge_tts_backend
+
+    if voicevox.health() is not None:
+        engine = "voicevox"
+    elif edge_tts_backend.available():
+        engine = "edge"
+    else:
         raise HTTPException(
             status_code=503,
             detail=(
-                "VOICEVOX ENGINE が起動していません（http://127.0.0.1:50021）。"
-                "吹き替え生成には VOICEVOX が必要です。起動してから再実行してください。"
+                "利用できる音声合成エンジンがありません。VOICEVOX を起動するか、"
+                "インターネット接続（Edge TTS 用）を確認してください。"
             ),
         )
 
@@ -556,6 +564,8 @@ def dub_render(req: DubRequest) -> DubResponse:
             video_path=req.video_path,
             rewrite_backend=rewrite_backend,
             progress=report,
+            engine=engine,
+            edge_voice=req.edge_voice,
         )
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
         raise HTTPException(status_code=500, detail=str(e)) from e

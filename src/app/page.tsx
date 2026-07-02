@@ -1427,7 +1427,9 @@ export default function Home() {
         <section className="media-card">
           <div className="media-card-head">
             <span className="section-label">吹き替え 完了</span>
-            <span className="routing-badge routing-short">{dub.segment_count} セグメント同期</span>
+            <span className="routing-badge routing-short">
+              {TTS_ENGINE_LABELS[dub.engine] ?? dub.engine} / {dub.segment_count} セグメント同期
+            </span>
           </div>
           <div className="media-meta">
             {Object.entries(dub.fit_summary).map(([method, count]) => (

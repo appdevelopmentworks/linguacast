@@ -45,10 +45,10 @@ def list_ja_voices() -> list[dict]:
     return _VOICES_CACHE
 
 
-async def _stream_mp3(text: str, voice: str) -> bytes:
+async def _stream_mp3(text: str, voice: str, rate: str) -> bytes:
     import edge_tts
 
-    communicate = edge_tts.Communicate(text, voice)
+    communicate = edge_tts.Communicate(text, voice, rate=rate)
     buf = b""
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
@@ -58,9 +58,14 @@ async def _stream_mp3(text: str, voice: str) -> bytes:
     return buf
 
 
-def synthesize_text(text: str, voice: str = DEFAULT_VOICE) -> bytes:
-    """Synthesize one text chunk -> 16-bit mono WAV bytes."""
-    mp3 = asyncio.run(_stream_mp3(text, voice))
+def synthesize_text(text: str, voice: str = DEFAULT_VOICE, rate_percent: int = 0) -> bytes:
+    """Synthesize one text chunk -> 16-bit mono WAV bytes.
+
+    ``rate_percent``: speaking-rate offset (e.g. 30 = 30% faster) — the Edge
+    equivalent of VOICEVOX's speedScale, used by dub-mode duration fitting.
+    """
+    rate = f"{rate_percent:+d}%"
+    mp3 = asyncio.run(_stream_mp3(text, voice, rate))
 
     src = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
     dst_path = src.name + ".wav"

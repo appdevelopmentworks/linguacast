@@ -149,6 +149,7 @@ export type DubResult = {
   dubbed_audio_path: string;
   dubbed_video_path: string | null;
   segment_count: number;
+  engine: string;
   fit_summary: Record<string, number>;
   fits: SegmentFit[];
 };

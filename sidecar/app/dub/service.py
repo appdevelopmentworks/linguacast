@@ -28,6 +28,7 @@ import srt as srtlib
 from app.translate import client as llm
 from app.translate.router import Backend
 from app.tts import voicevox
+from app.tts.cloud import edge_tts_backend
 
 SPEED_MAX = 1.3
 # Skip resynthesis when the overrun is negligible.
@@ -73,11 +74,22 @@ def render_dub(
     voicevox_base: str = voicevox.DEFAULT_BASE,
     rewrite_backend: Backend | None = None,
     progress=None,
+    engine: str = "voicevox",
+    edge_voice: str | None = None,
 ) -> dict:
     with open(translated_srt_path, encoding="utf-8") as f:
         subs = list(srtlib.parse(f.read()))
     if not subs:
         raise ValueError("translated SRT has no segments")
+
+    def synth(text: str, speed: float) -> bytes:
+        """Engine-agnostic synthesis; speed 1.0 = natural pace."""
+        if engine == "edge":
+            rate_percent = round((speed - 1.0) * 100)
+            return edge_tts_backend.synthesize_text(
+                text, edge_voice or edge_tts_backend.DEFAULT_VOICE, rate_percent
+            )
+        return voicevox.synthesize_text(text, style_id, voicevox_base, speed_scale=speed)
 
     blocks = _group_blocks(subs)
 
@@ -116,17 +128,17 @@ def render_dub(
         shortened = i in shortened_map
 
         # (2) synthesize and measure.
-        blob = voicevox.synthesize_text(text, style_id, voicevox_base)
+        blob = synth(text, 1.0)
         frames, fr = _wav_frames(blob)
         framerate = framerate or fr
         natural = len(frames) / 2 / fr
         duration = natural
         method = "shortened" if shortened else "natural"
 
-        # (3) speedScale resynthesis, clamped.
+        # (3) speed resynthesis, clamped (VOICEVOX speedScale / Edge rate).
         if duration > budget * RATE_TOLERANCE:
             speed = min(SPEED_MAX, duration / budget)
-            blob = voicevox.synthesize_text(text, style_id, voicevox_base, speed_scale=speed)
+            blob = synth(text, speed)
             frames, fr = _wav_frames(blob)
             duration = len(frames) / 2 / fr
             method = "speed_scaled"
@@ -184,6 +196,7 @@ def render_dub(
     result: dict = {
         "dubbed_audio_path": wav_path,
         "segment_count": len(fits),
+        "engine": engine,
         "fit_summary": _summarize(fits),
         "fits": [f.__dict__ for f in fits],
     }

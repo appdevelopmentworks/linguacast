@@ -551,6 +551,8 @@ pub struct DubResult {
     dubbed_audio_path: String,
     dubbed_video_path: Option<String>,
     segment_count: u32,
+    #[serde(default)]
+    engine: String,
     fit_summary: std::collections::HashMap<String, u32>,
     fits: Vec<SegmentFit>,
 }
@@ -599,6 +601,7 @@ pub async fn dub_video(
         "translated_srt_path": translated_srt_path,
         "output_dir": work_dir,
         "style_id": settings.narrator_voice,
+        "edge_voice": settings.edge_narrator_voice,
         "video_path": video_path,
         "task_id": task_id,
     });
