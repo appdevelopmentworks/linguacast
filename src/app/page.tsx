@@ -382,6 +382,19 @@ export default function Home() {
     return list;
   })();
 
+  // Periodic engine health refresh for the header indicators (LLM / VOICEVOX).
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void translateBackends()
+        .then(setBackends)
+        .catch(() => {});
+      void ttsStatus()
+        .then(setTts)
+        .catch(() => {});
+    }, 20000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Subscribe to pipeline progress events (setState in an external callback).
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -577,19 +590,47 @@ export default function Home() {
 
   const sidecarOk = health?.reachable ?? false;
   const depsMissing = deps ? deps.tools.filter((t) => !t.available) : [];
+  const llmOn = Boolean(backends?.ollama.available || backends?.lmstudio.available);
 
   return (
     <main className="container">
       <header className="app-header">
         <h1>linguacast</h1>
         <span className="tagline">外国語の一次情報を、日本語の音声で。</span>
-        <button
-          className="gear-btn"
-          onClick={() => setShowSettings((v) => !v)}
-          aria-expanded={showSettings}
-        >
-          ⚙ 設定
-        </button>
+        <div className="header-right">
+          <span
+            className={`engine-chip ${llmOn ? "engine-on" : "engine-off"}`}
+            title={
+              llmOn
+                ? `ローカルLLM 稼働中（${[
+                    backends?.ollama.available ? "Ollama" : null,
+                    backends?.lmstudio.available ? "LM Studio" : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" / ")}）`
+                : "ローカルLLM が見つかりません（Ollama / LM Studio 未起動）"
+            }
+          >
+            ● LLM
+          </span>
+          <span
+            className={`engine-chip ${tts?.voicevox_available ? "engine-on" : "engine-off"}`}
+            title={
+              tts?.voicevox_available
+                ? `VOICEVOX 稼働中（v${tts.voicevox_version}）`
+                : "VOICEVOX が起動していません"
+            }
+          >
+            ● VOICEVOX
+          </span>
+          <button
+            className="gear-btn"
+            onClick={() => setShowSettings((v) => !v)}
+            aria-expanded={showSettings}
+          >
+            ⚙ 設定
+          </button>
+        </div>
       </header>
 
       {showSettings && settings && (
