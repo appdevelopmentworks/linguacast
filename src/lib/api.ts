@@ -293,6 +293,18 @@ export function openWorkDir(path: string): Promise<void> {
   return invoke("open_work_dir", { path });
 }
 
+export type OpenRouterModel = { id: string; name: string };
+
+export function openrouterModels(): Promise<OpenRouterModel[]> {
+  return invoke<OpenRouterModel[]>("openrouter_models");
+}
+
+export const TTS_ENGINE_LABELS: Record<string, string> = {
+  voicevox: "VOICEVOX（ローカル）",
+  edge: "Edge TTS（無料・Microsoft）",
+  google: "Google Cloud TTS",
+};
+
 export const FIT_METHOD_LABELS: Record<string, string> = {
   natural: "そのまま",
   shortened: "短縮訳",

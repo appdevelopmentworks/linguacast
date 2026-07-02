@@ -60,7 +60,8 @@ pub fn run() {
             commands::share_file,
             commands::prepare_local_media,
             commands::list_jobs,
-            commands::open_work_dir
+            commands::open_work_dir,
+            commands::openrouter_models
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

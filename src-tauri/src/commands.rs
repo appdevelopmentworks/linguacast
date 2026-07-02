@@ -165,6 +165,47 @@ pub fn has_openrouter_key() -> Result<bool, String> {
     Ok(crate::secrets::get_secret(OPENROUTER_KEY_NAME)?.is_some())
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct OpenRouterModel {
+    id: String,
+    name: String,
+}
+
+/// Fetch the OpenRouter model catalogue (public endpoint, no key needed) so
+/// the settings UI can offer a dropdown instead of free-text slugs.
+#[tauri::command]
+pub async fn openrouter_models() -> Result<Vec<OpenRouterModel>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+    let resp = client
+        .get("https://openrouter.ai/api/v1/models")
+        .send()
+        .await
+        .map_err(|e| format!("OpenRouter に接続できません: {e}"))?;
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("invalid models response: {e}"))?;
+
+    let mut models: Vec<OpenRouterModel> = v["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| {
+                    Some(OpenRouterModel {
+                        id: m["id"].as_str()?.to_string(),
+                        name: m["name"].as_str().unwrap_or_default().to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(models)
+}
+
 // --- Session 3: translation (proxy to the sidecar translate stage) ---
 
 #[derive(Serialize, Deserialize)]

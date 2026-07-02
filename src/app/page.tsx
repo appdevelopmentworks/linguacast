@@ -16,6 +16,7 @@ import {
   listChannelUploads,
   listJobs,
   onProgress,
+  openrouterModels,
   openWorkDir,
   pingSidecar,
   prepareLocalMedia,
@@ -31,6 +32,7 @@ import {
   transcribe,
   translateBackends,
   translateSrt,
+  TTS_ENGINE_LABELS,
   ttsStatus,
   formatDuration,
   routingLabel,
@@ -39,6 +41,7 @@ import {
   type Job,
   type JobSummary,
   type MediaMeta,
+  type OpenRouterModel,
   type Presets,
   type Settings,
   type ShareInfo,
@@ -76,8 +79,9 @@ export default function Home() {
   const [health, setHealth] = useState<SidecarHealth | null>(null);
 
   const [url, setUrl] = useState("");
+  // Defaults per user choice: full translation, dubbed video.
   const [translationMode, setTranslationMode] = useState<TranslationMode>("full");
-  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("subs");
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("dub");
 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -108,6 +112,7 @@ export default function Home() {
   const [googleKeyInput, setGoogleKeyInput] = useState("");
   const [newPreset, setNewPreset] = useState({ category: "", label: "", url: "" });
   const [dragActive, setDragActive] = useState(false);
+  const [orModels, setOrModels] = useState<OpenRouterModel[]>([]);
 
   // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
@@ -381,6 +386,14 @@ export default function Home() {
     if (current && !list.includes(current)) list.unshift(current);
     return list;
   })();
+
+  // Fetch the OpenRouter catalogue once, when the settings panel first opens.
+  useEffect(() => {
+    if (!showSettings || orModels.length > 0) return;
+    void openrouterModels()
+      .then(setOrModels)
+      .catch(() => {});
+  }, [showSettings, orModels.length]);
 
   // Periodic engine health refresh for the header indicators (LLM / VOICEVOX).
   useEffect(() => {
@@ -717,14 +730,31 @@ export default function Home() {
               </button>
             </div>
 
-            <label className="settings-label">OpenRouter モデル slug</label>
-            <input
-              className="url-input key-input"
-              type="text"
-              placeholder="例: anthropic/claude-sonnet-5"
-              value={settings.openrouter_model ?? ""}
-              onChange={(e) => changeSetting({ openrouter_model: e.target.value || null })}
-            />
+            <label className="settings-label">OpenRouter モデル</label>
+            <div>
+              <input
+                className="url-input key-input"
+                type="text"
+                list="openrouter-model-list"
+                placeholder={
+                  orModels.length > 0
+                    ? "クリックして選択（入力で絞り込み）"
+                    : "例: anthropic/claude-sonnet-5"
+                }
+                value={settings.openrouter_model ?? ""}
+                onChange={(e) => changeSetting({ openrouter_model: e.target.value || null })}
+              />
+              <datalist id="openrouter-model-list">
+                {orModels.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </datalist>
+              {orModels.length > 0 && (
+                <div className="mode-note">{orModels.length} モデルから選択できます</div>
+              )}
+            </div>
 
             <label className="settings-label">
               Google Cloud TTS APIキー
@@ -855,18 +885,24 @@ export default function Home() {
             <button
               className={deliveryMode === "subs" ? "seg active" : "seg"}
               onClick={() => setDeliveryMode("subs")}
-              disabled={busy}
+              disabled={busy || translationMode === "summary"}
             >
               字幕のみ
             </button>
             <button
               className={deliveryMode === "dub" ? "seg active" : "seg"}
               onClick={() => setDeliveryMode("dub")}
-              disabled={busy}
+              disabled={busy || translationMode === "summary"}
             >
               吹き替え
             </button>
           </div>
+
+          {translationMode === "summary" && (
+            <span className="mode-note">
+              要約モードでは日本語ポッドキャスト音声（wav）を生成します（吹き替え動画は「全訳」モードで）
+            </span>
+          )}
 
           <button
             className="start-btn"
@@ -1217,7 +1253,7 @@ export default function Home() {
           <div className="media-card-head">
             <span className="section-label">音声合成 完了</span>
             <span className="routing-badge routing-short">
-              {audio.engine === "voicevox" ? "VOICEVOX（ローカル）" : "Google Cloud TTS"}
+              {TTS_ENGINE_LABELS[audio.engine] ?? audio.engine}
             </span>
           </div>
           <div className="media-meta">

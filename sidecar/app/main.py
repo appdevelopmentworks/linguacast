@@ -375,9 +375,9 @@ def tts_status() -> TtsStatusResponse:
             voicevox_version=None,
             speakers=[],
             warning=(
-                "VOICEVOX ENGINE が起動していません（http://127.0.0.1:50021）。"
-                "VOICEVOX を起動してください。起動しない場合はクラウドTTS"
-                "（Google Cloud TTS）へのフォールバックが利用されます。"
+                "VOICEVOX が起動していません。このままでも無料の Edge TTS"
+                "（Microsoft音声・設定不要）で読み上げできますが、"
+                "キャラクター音声を使うには VOICEVOX を起動してください。"
             ),
         )
     try:

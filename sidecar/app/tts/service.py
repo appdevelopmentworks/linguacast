@@ -1,8 +1,9 @@
 """TTS orchestration: script lines -> one Japanese audio file.
 
 Engine resolution (fallback contract): VOICEVOX (local) when healthy, else
-Google Cloud TTS when a key is configured, else a clear Japanese error. In
-dialogue scripts each speaker role gets its own voice (FR-5/FR-8).
+Edge TTS (free Microsoft voices, zero setup), else Google Cloud TTS when a
+key is configured, else a clear Japanese error. In dialogue scripts each
+speaker role gets its own voice (FR-5/FR-8).
 """
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from __future__ import annotations
 import os
 
 from app.tts import voicevox
-from app.tts.cloud import google_tts
+from app.tts.cloud import edge_tts_backend, google_tts
 
 # Extra pause when the speaker changes in a dialogue (seconds).
 TURN_PAUSE_SEC = 0.55
@@ -25,15 +26,19 @@ def resolve_engine(
     google_key: str | None = None,
     voicevox_base: str = voicevox.DEFAULT_BASE,
 ) -> str:
-    if forced in ("voicevox", "google"):
+    if forced in ("voicevox", "edge", "google"):
         return forced
     if voicevox.health(voicevox_base) is not None:
         return "voicevox"
+    # Edge TTS: free Microsoft voices, no key/install — beginner-friendly
+    # fallback (needs internet).
+    if edge_tts_backend.available():
+        return "edge"
     if google_key:
         return "google"
     raise TTSUnavailable(
-        "VOICEVOX ENGINE が起動していません（http://127.0.0.1:50021）。"
-        "VOICEVOX を起動するか、設定で Google Cloud TTS のキーを登録してください。"
+        "利用できる音声合成エンジンがありません。VOICEVOX を起動するか、"
+        "インターネット接続（Edge TTS 用）を確認してください。"
     )
 
 
@@ -74,6 +79,13 @@ def synthesize_lines(
         if engine == "voicevox":
             style = voice_map.get(speaker, default_style)
             sentence_blobs = voicevox.synthesize_long_text(text, style, voicevox_base)
+        elif engine == "edge":
+            voice = (
+                edge_tts_backend.GUEST_VOICE
+                if speaker == "ゲスト"
+                else edge_tts_backend.DEFAULT_VOICE
+            )
+            sentence_blobs = [edge_tts_backend.synthesize_text(text, voice)]
         else:
             if not google_key:
                 raise TTSUnavailable("Google Cloud TTS のキーが未設定です。")

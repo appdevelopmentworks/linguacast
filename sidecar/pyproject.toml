@@ -19,7 +19,9 @@ stt = ["faster-whisper>=1.1"]
 cuda = ["nvidia-cublas-cu12", "nvidia-cudnn-cu12"]
 # Unified OpenAI-compatible client for the Ollama/LM Studio/OpenRouter tiers.
 llm = ["openai>=1.50"]
-tts = []
+# Edge TTS: free Microsoft neural voices, no key or install — the zero-setup
+# fallback when VOICEVOX is not running.
+tts = ["edge-tts>=6.1"]
 
 # Application (not a distributable package): `uv run` executes `app.main:app`
 # from this directory without a build backend.
