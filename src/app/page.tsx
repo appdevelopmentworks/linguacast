@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   checkDependencies,
@@ -53,6 +54,21 @@ import {
 type TranslationMode = "full" | "summary";
 type DeliveryMode = "subs" | "dub";
 
+const MEDIA_EXTENSIONS = [
+  "mp4",
+  "mkv",
+  "webm",
+  "mov",
+  "avi",
+  "mp3",
+  "wav",
+  "m4a",
+  "aac",
+  "flac",
+  "ogg",
+  "opus",
+];
+
 export default function Home() {
   const [deps, setDeps] = useState<DependencyReport | null>(null);
   const [presets, setPresets] = useState<Presets>([]);
@@ -89,6 +105,7 @@ export default function Home() {
   const [orKeyInput, setOrKeyInput] = useState("");
   const [googleKeyInput, setGoogleKeyInput] = useState("");
   const [newPreset, setNewPreset] = useState({ category: "", label: "", url: "" });
+  const [dragActive, setDragActive] = useState(false);
 
   // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
@@ -204,44 +221,62 @@ export default function Home() {
     setResume(null);
   }, []);
 
+  const handleLocalFile = useCallback(
+    async (path: string) => {
+      if (busy) return;
+      const ext = path.split(".").pop()?.toLowerCase() ?? "";
+      if (!MEDIA_EXTENSIONS.includes(ext)) {
+        setError(`対応していないファイル形式です: .${ext}（対応: ${MEDIA_EXTENSIONS.join(", ")}）`);
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      resetPipeline();
+      setProgress("ローカルファイルを取り込んでいます…");
+      try {
+        setJob(await prepareLocalMedia(path));
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+    },
+    [busy, resetPipeline],
+  );
+
   const runOpenLocal = useCallback(async () => {
     const picked = await openFileDialog({
       multiple: false,
       title: "音声・動画ファイルを選択",
-      filters: [
-        {
-          name: "メディアファイル",
-          extensions: [
-            "mp4",
-            "mkv",
-            "webm",
-            "mov",
-            "avi",
-            "mp3",
-            "wav",
-            "m4a",
-            "aac",
-            "flac",
-            "ogg",
-            "opus",
-          ],
-        },
-      ],
+      filters: [{ name: "メディアファイル", extensions: MEDIA_EXTENSIONS }],
     });
     if (typeof picked !== "string") return;
-    setBusy(true);
-    setError(null);
-    resetPipeline();
-    setProgress("ローカルファイルを取り込んでいます…");
-    try {
-      setJob(await prepareLocalMedia(picked));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  }, [resetPipeline]);
+    await handleLocalFile(picked);
+  }, [handleLocalFile]);
+
+  // Native drag & drop from the OS (Tauri drag-drop carries real file paths;
+  // HTML5 drop events inside a webview do not).
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const t = event.payload.type;
+        if (t === "enter" || t === "over") {
+          setDragActive(true);
+        } else if (t === "leave") {
+          setDragActive(false);
+        } else if (t === "drop") {
+          setDragActive(false);
+          const paths = event.payload.paths;
+          if (paths && paths.length > 0) void handleLocalFile(paths[0]);
+        }
+      })
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => unlisten?.();
+  }, [handleLocalFile]);
 
   const resumeJob = useCallback(
     (summary: JobSummary) => {
@@ -747,14 +782,22 @@ export default function Home() {
           >
             メタ情報のみ取得
           </button>
-          <button
-            className="link-btn"
-            onClick={() => void runOpenLocal()}
-            disabled={busy}
-            title="ダウンロード済みの音声・動画ファイルから開始します"
-          >
-            📂 ローカルファイルを開く
-          </button>
+        </div>
+
+        <div
+          className={`drop-zone${dragActive ? " drop-active" : ""}${busy ? " drop-disabled" : ""}`}
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (!busy) void runOpenLocal();
+          }}
+          onKeyDown={(e) => {
+            if ((e.key === "Enter" || e.key === " ") && !busy) void runOpenLocal();
+          }}
+          title="ダウンロード済みの音声・動画ファイルから開始します"
+        >
+          📂 ここに音声・動画ファイルをドロップ
+          <span className="drop-sub">（クリックでファイル選択）</span>
         </div>
       </section>
 
