@@ -15,6 +15,11 @@ sidecar/**/__pycache__/
 sidecar/.ruff_cache/
 *.pyc
 
+# Dev-mode data root (LINGUACAST_DATA_DIR) — job artifacts, settings
+.dev-data/
+probe*.bat
+probe-*.txt
+
 # Secrets / env (never commit API keys — see CLAUDE.md guardrails)
 .env
 .env.*

@@ -60,13 +60,27 @@ fn default_presets() -> Presets {
     ]
 }
 
-fn presets_path(app: &AppHandle) -> Result<PathBuf, String> {
+/// App data/config root. `LINGUACAST_DATA_DIR` overrides the OS location —
+/// used in development so artifacts land in a user-visible directory (Claude
+/// Code's sandbox virtualizes AppData writes into an invisible overlay).
+pub fn data_root(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(dir) = std::env::var("LINGUACAST_DATA_DIR") {
+        if !dir.trim().is_empty() {
+            let p = PathBuf::from(dir);
+            fs::create_dir_all(&p).map_err(|e| format!("cannot create data dir: {e}"))?;
+            return Ok(p);
+        }
+    }
     let dir = app
         .path()
         .app_config_dir()
         .map_err(|e| format!("cannot resolve config dir: {e}"))?;
     fs::create_dir_all(&dir).map_err(|e| format!("cannot create config dir: {e}"))?;
-    Ok(dir.join("presets.json"))
+    Ok(dir)
+}
+
+fn presets_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(data_root(app)?.join("presets.json"))
 }
 
 /// Load presets, seeding defaults on first run.
@@ -120,12 +134,7 @@ impl Default for Settings {
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| format!("cannot resolve config dir: {e}"))?;
-    fs::create_dir_all(&dir).map_err(|e| format!("cannot create config dir: {e}"))?;
-    Ok(dir.join("settings.json"))
+    Ok(data_root(app)?.join("settings.json"))
 }
 
 pub fn load_settings(app: &AppHandle) -> Result<Settings, String> {

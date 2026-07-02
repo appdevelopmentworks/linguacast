@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::external::run_capture;
@@ -469,11 +469,7 @@ fn normalize_channel_url(url: &str) -> String {
 }
 
 fn jobs_root(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("cannot resolve data dir: {e}"))?
-        .join("jobs");
+    let dir = crate::config::data_root(app)?.join("jobs");
     fs::create_dir_all(&dir).map_err(|e| format!("cannot create jobs dir: {e}"))?;
     Ok(dir)
 }
