@@ -414,6 +414,60 @@ export default function Home() {
     }
   }, [url]);
 
+  // One-click pipeline: follows the output-mode toggles to the end.
+  // 全訳+吹き替え -> dub video / 全訳+字幕のみ -> translated SRT /
+  // 要約 -> podcast script + audio. Pass a Job to skip the fetch stage.
+  const runPipeline = useCallback(
+    async (fromJob?: Job) => {
+      setBusy(true);
+      setError(null);
+      if (!fromJob) resetPipeline();
+      setPreview(null);
+      setTranscript(null);
+      setTranslation(null);
+      setScript(null);
+      setAudio(null);
+      setDub(null);
+      setShare(null);
+      try {
+        let j = fromJob ?? null;
+        if (!j) {
+          setProgress("メディアを取得しています…");
+          j = await prepareMedia(url.trim());
+          setJob(j);
+        }
+        if (!j.artifacts.extracted_wav) {
+          throw new Error("抽出済み音声が見つかりません。");
+        }
+
+        const t = await transcribe(j.artifacts.extracted_wav, j.work_dir);
+        setTranscript(t);
+        if (!t.srt_path) throw new Error("原語 SRT の生成に失敗しました。");
+
+        if (translationMode === "full") {
+          const tr = await translateSrt(t.srt_path, j.work_dir);
+          setTranslation(tr);
+          if (deliveryMode === "dub") {
+            const d = await dubVideo(tr.translated_srt_path, j.work_dir, j.meta.source_url);
+            setDub(d);
+          }
+        } else {
+          const sc = await summarizeScript(t.srt_path, j.work_dir, j.meta.title, j.meta.chapters);
+          setScript(sc);
+          const au = await synthesizeScript(sc.script_json_path, j.work_dir);
+          setAudio(au);
+        }
+        setProgress(null);
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+    },
+    [url, translationMode, deliveryMode, resetPipeline],
+  );
+
   const runTranscribe = useCallback(async () => {
     if (!job?.artifacts.extracted_wav) return;
     setBusy(true);
@@ -729,7 +783,7 @@ export default function Home() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && canStart) void runPrepare();
+            if (e.key === "Enter" && canStart) void runPipeline();
           }}
           disabled={busy}
         />
@@ -769,8 +823,13 @@ export default function Home() {
             </button>
           </div>
 
-          <button className="start-btn" onClick={() => void runPrepare()} disabled={!canStart}>
-            ▶ 開始
+          <button
+            className="start-btn"
+            onClick={() => void runPipeline()}
+            disabled={!canStart}
+            title="選択した出力モードに従って最後まで自動実行します"
+          >
+            ▶ 一括実行
           </button>
         </div>
 
@@ -782,6 +841,14 @@ export default function Home() {
             title="ダウンロードせずにメタ情報だけ取得します"
           >
             メタ情報のみ取得
+          </button>
+          <button
+            className="link-btn"
+            onClick={() => void runPrepare()}
+            disabled={!canStart}
+            title="音声の取得・抽出だけ行い、以降は各ステップのボタンで手動実行します"
+          >
+            取得のみ（手動ステップ）
           </button>
         </div>
 
@@ -930,6 +997,14 @@ export default function Home() {
               <span className="artifact-label">次のステップ</span>
               <button
                 className="start-btn"
+                onClick={() => void runPipeline(job)}
+                disabled={busy || !job.artifacts.extracted_wav}
+                title="選択した出力モードに従って最後まで自動実行します"
+              >
+                ⚡ ここから一括実行
+              </button>
+              <button
+                className="start-btn"
                 onClick={() => void runTranscribe()}
                 disabled={busy || !job.artifacts.extracted_wav}
               >
@@ -1024,6 +1099,15 @@ export default function Home() {
           <div className="artifact-row">
             <span className="artifact-label">台本</span>
             <code className="path">{script.script_txt_path}</code>
+            {job && (
+              <button
+                className="mini-btn"
+                onClick={() => void openWorkDir(job.work_dir).catch((e) => setError(String(e)))}
+                title="エクスプローラーで開く"
+              >
+                📁 開く
+              </button>
+            )}
           </div>
           <div className="transcript-preview">
             {script.lines.slice(0, 8).map((l, i) => (
@@ -1097,6 +1181,15 @@ export default function Home() {
             >
               📱 QRで送る
             </button>
+            {job && (
+              <button
+                className="mini-btn"
+                onClick={() => void openWorkDir(job.work_dir).catch((e) => setError(String(e)))}
+                title="エクスプローラーで開く"
+              >
+                📁 開く
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -1115,6 +1208,15 @@ export default function Home() {
           <div className="artifact-row">
             <span className="artifact-label">和訳 SRT</span>
             <code className="path">{translation.translated_srt_path}</code>
+            {job && (
+              <button
+                className="mini-btn"
+                onClick={() => void openWorkDir(job.work_dir).catch((e) => setError(String(e)))}
+                title="エクスプローラーで開く"
+              >
+                📁 開く
+              </button>
+            )}
           </div>
           <div className="transcript-preview">
             {translation.samples.map((s, i) => (
@@ -1164,6 +1266,15 @@ export default function Home() {
               >
                 📱 QRで送る
               </button>
+              {job && (
+                <button
+                  className="mini-btn"
+                  onClick={() => void openWorkDir(job.work_dir).catch((e) => setError(String(e)))}
+                  title="エクスプローラーで開く"
+                >
+                  📁 開く
+                </button>
+              )}
             </div>
           )}
           <div className="artifact-row">
@@ -1176,6 +1287,15 @@ export default function Home() {
             >
               📱 QRで送る
             </button>
+            {job && !dub.dubbed_video_path && (
+              <button
+                className="mini-btn"
+                onClick={() => void openWorkDir(job.work_dir).catch((e) => setError(String(e)))}
+                title="エクスプローラーで開く"
+              >
+                📁 開く
+              </button>
+            )}
           </div>
         </section>
       )}
