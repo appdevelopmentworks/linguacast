@@ -208,10 +208,28 @@ body {
 }
 
 .banner-info {
+  color: var(--muted);
+}
+
+.progress-line {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--muted);
+}
+
+.progress-track {
+  margin-top: 10px;
+  height: 6px;
+  background: var(--panel-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.4s ease;
 }
 
 /* --- input card --- */

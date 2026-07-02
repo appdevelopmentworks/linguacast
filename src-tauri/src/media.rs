@@ -469,7 +469,21 @@ fn normalize_channel_url(url: &str) -> String {
 }
 
 fn jobs_root(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = crate::config::data_root(app)?.join("jobs");
+    // Dev override (LINGUACAST_DATA_DIR) keeps artifacts inside the repo. The
+    // production default is the user's Downloads folder — outputs should be
+    // easy to find, not buried in a hidden AppData path.
+    let env_override = std::env::var("LINGUACAST_DATA_DIR")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let dir = if env_override {
+        crate::config::data_root(app)?.join("jobs")
+    } else {
+        use tauri::Manager;
+        app.path()
+            .download_dir()
+            .map_err(|e| format!("cannot resolve download dir: {e}"))?
+            .join("linguacast")
+    };
     fs::create_dir_all(&dir).map_err(|e| format!("cannot create jobs dir: {e}"))?;
     Ok(dir)
 }

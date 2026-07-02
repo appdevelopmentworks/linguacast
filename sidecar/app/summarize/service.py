@@ -74,6 +74,7 @@ def generate_script(
     source_title: str,
     chapters: list[dict] | None = None,
     single_pass_budget: int | None = None,
+    progress=None,
 ) -> dict:
     items = load_timed_text(srt_path)
     if not items:
@@ -83,36 +84,49 @@ def generate_script(
     budget = single_pass_budget or SINGLE_PASS_MAX_CHARS
 
     # --- Stage A: comprehension / compression ---
+    # Progress: N compression units + merge + classify + script generation.
     if len(full_text) <= budget:
         strategy = "single_pass"
+        total_units = 3.0
         notes = _chat(
             backend,
             prompts.compress_section(source_title, full_text),
             temperature=0.3,
         )
         section_count = 1
+        done_units = 1.0
     else:
         strategy = "hierarchical"
         sections: list[Section] = chunking.build_sections(items, chapters)
+        total_units = len(sections) + 3.0
         section_notes: list[tuple[str, str]] = []
-        for sec in sections:
+        for si, sec in enumerate(sections):
             note = _chat(
                 backend,
                 prompts.compress_section(sec.title, sec.text),
                 temperature=0.3,
             )
             section_notes.append((sec.title, note))
+            if progress is not None:
+                progress(si + 1, total_units)
         notes = _chat(backend, prompts.merge_notes(section_notes), temperature=0.3)
         section_count = len(sections)
+        done_units = float(section_count) + 1.0
+    if progress is not None:
+        progress(done_units, total_units)
 
     # --- Speaker-format estimate + Stage B: script generation ---
     script_format = estimate_format(backend, items)
+    if progress is not None:
+        progress(done_units + 1.0, total_units)
     if script_format == "dialogue":
         raw = _chat(backend, prompts.dialogue_script(notes, source_title), temperature=0.7)
     else:
         raw = _chat(backend, prompts.narration_script(notes, source_title), temperature=0.7)
 
     title, lines = _parse_script(raw, script_format, fallback_title=source_title)
+    if progress is not None:
+        progress(total_units, total_units)
 
     os.makedirs(output_dir, exist_ok=True)
     txt_path = os.path.join(output_dir, "script.ja.txt")

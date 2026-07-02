@@ -14,17 +14,21 @@ from app.stt.base import TranscribeOptions, TranscriptResult
 class FasterWhisperBackend:
     name = "faster-whisper"
 
-    def transcribe(self, audio_path: str, options: TranscribeOptions) -> TranscriptResult:
+    def transcribe(
+        self, audio_path: str, options: TranscribeOptions, progress=None
+    ) -> TranscriptResult:
         # Imported lazily so the heavy dependency is only loaded when used.
         from app.stt import faster_whisper_backend as fw
 
-        return fw.transcribe(audio_path, options)
+        return fw.transcribe(audio_path, options, progress)
 
 
 class MacWhisperBackend:
     name = "mlx-whisper/whisper.cpp"
 
-    def transcribe(self, audio_path: str, options: TranscribeOptions) -> TranscriptResult:
+    def transcribe(
+        self, audio_path: str, options: TranscribeOptions, progress=None
+    ) -> TranscriptResult:
         raise NotImplementedError(
             "macOS の STT バックエンド（mlx-whisper / whisper.cpp）はこのビルドでは未実装です。"
         )

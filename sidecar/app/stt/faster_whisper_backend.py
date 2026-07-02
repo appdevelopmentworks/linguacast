@@ -70,7 +70,11 @@ def _load_model(model_size: str, device: str, compute_type: str):
 
 
 def _run(
-    audio_path: str, options: TranscribeOptions, device: str, compute_type: str
+    audio_path: str,
+    options: TranscribeOptions,
+    device: str,
+    compute_type: str,
+    progress=None,
 ) -> TranscriptResult:
     model = _load_model(options.model_size, device, compute_type)
     segments_iter, info = model.transcribe(
@@ -80,8 +84,13 @@ def _run(
         vad_filter=options.vad_filter,  # gotcha #2: suppress silence hallucination
         beam_size=5,
     )
-    # Consume the generator here so any backend error surfaces inside the try.
-    segments = [Segment(start=s.start, end=s.end, text=s.text.strip()) for s in segments_iter]
+    # Consume the generator here so any backend error surfaces inside the try;
+    # report progress as audio-seconds processed out of the total duration.
+    segments = []
+    for s in segments_iter:
+        segments.append(Segment(start=s.start, end=s.end, text=s.text.strip()))
+        if progress is not None and info.duration:
+            progress(s.end, info.duration)
     return TranscriptResult(
         language=info.language,
         duration=info.duration,
@@ -92,7 +101,7 @@ def _run(
     )
 
 
-def transcribe(audio_path: str, options: TranscribeOptions) -> TranscriptResult:
+def transcribe(audio_path: str, options: TranscribeOptions, progress=None) -> TranscriptResult:
     _prepare_cuda_libs()
 
     if options.device:
@@ -104,7 +113,7 @@ def transcribe(audio_path: str, options: TranscribeOptions) -> TranscriptResult:
     last_err: Exception | None = None
     for device, compute_type in candidates:
         try:
-            return _run(audio_path, options, device, compute_type)
+            return _run(audio_path, options, device, compute_type, progress)
         except Exception as e:  # noqa: BLE001 — try the next device/compute tier
             last_err = e
             continue

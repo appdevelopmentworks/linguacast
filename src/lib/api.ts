@@ -173,6 +173,7 @@ export type ProgressEvent = {
   job_id?: string;
   stage: string;
   message: string;
+  percent?: number;
 };
 
 export function pingSidecar(): Promise<SidecarHealth> {

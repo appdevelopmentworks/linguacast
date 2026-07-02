@@ -45,6 +45,7 @@ def synthesize_lines(
     google_key: str | None = None,
     google_voice_map: dict[str, str] | None = None,
     voicevox_base: str = voicevox.DEFAULT_BASE,
+    progress=None,
 ) -> dict:
     """Synthesize speaker-tagged lines into output_dir/audio.ja.wav.
 
@@ -62,7 +63,9 @@ def synthesize_lines(
     pauses: list[float] = []
     prev_speaker: str | None = None
 
-    for line in lines:
+    for li, line in enumerate(lines):
+        if progress is not None:
+            progress(li, len(lines))
         speaker = line.get("speaker") or "ナレーター"
         text = (line.get("text") or "").strip()
         if not text:

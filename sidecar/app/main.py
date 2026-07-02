@@ -32,6 +32,26 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok", service=SERVICE_NAME, version=VERSION)
 
 
+class ProgressResponse(BaseModel):
+    found: bool
+    stage: str | None = None
+    done: float | None = None
+    total: float | None = None
+
+
+@app.get("/progress/{task_id}", response_model=ProgressResponse)
+def progress_status(task_id: str) -> ProgressResponse:
+    """Polled by the Rust core while a long stage call is in flight."""
+    from app import progress
+
+    entry = progress.get(task_id)
+    if entry is None:
+        return ProgressResponse(found=False)
+    return ProgressResponse(
+        found=True, stage=entry["stage"], done=entry["done"], total=entry["total"]
+    )
+
+
 # --- STT (Session 2) ---
 
 
@@ -81,6 +101,7 @@ class TranscribeRequest(BaseModel):
     vad_filter: bool = True
     device: str | None = None
     compute_type: str | None = None
+    task_id: str | None = None
 
 
 class SegmentModel(BaseModel):
@@ -122,8 +143,13 @@ def stt_transcribe(req: TranscribeRequest) -> TranscribeResponse:
         compute_type=req.compute_type,
     )
 
+    from app import progress as progress_registry
+
+    def report(done: float, total: float) -> None:
+        progress_registry.update(req.task_id, "stt", done, total)
+
     try:
-        result = select_backend().transcribe(req.audio_path, options)
+        result = select_backend().transcribe(req.audio_path, options, report)
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -169,6 +195,7 @@ class TranslateSrtRequest(BaseModel):
     forced_tier: str | None = None  # pin a tier for testing (ollama/lmstudio/openrouter)
     openrouter_key: str | None = None
     openrouter_model: str | None = None
+    task_id: str | None = None
 
 
 class TranslateSample(BaseModel):
@@ -206,8 +233,15 @@ def translate_srt_endpoint(req: TranslateSrtRequest) -> TranslateSrtResponse:
     except rt.NoBackendAvailable as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
+    from app import progress as progress_registry
+
+    def report(done: float, total: float) -> None:
+        progress_registry.update(req.task_id, "translate", done, total)
+
     try:
-        result = service.translate_srt(req.srt_path, req.output_dir, backend, req.source_lang)
+        result = service.translate_srt(
+            req.srt_path, req.output_dir, backend, req.source_lang, progress=report
+        )
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -235,6 +269,7 @@ class SummarizeRequest(BaseModel):
     openrouter_model: str | None = None
     # Test hook: shrink the single-pass budget to force hierarchical mode.
     single_pass_budget: int | None = None
+    task_id: str | None = None
 
 
 class ScriptLine(BaseModel):
@@ -276,6 +311,11 @@ def summarize_script(req: SummarizeRequest) -> SummarizeResponse:
     except rt.NoBackendAvailable as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
 
+    from app import progress as progress_registry
+
+    def report(done: float, total: float) -> None:
+        progress_registry.update(req.task_id, "summarize", done, total)
+
     try:
         result = summarize_service.generate_script(
             req.srt_path,
@@ -284,6 +324,7 @@ def summarize_script(req: SummarizeRequest) -> SummarizeResponse:
             source_title=req.source_title or "この動画",
             chapters=req.chapters,
             single_pass_budget=req.single_pass_budget,
+            progress=report,
         )
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -365,6 +406,7 @@ class SynthesizeRequest(BaseModel):
     voice_map: dict[str, int] | None = None
     engine: str | None = None  # auto (None) | voicevox | google
     google_key: str | None = None
+    task_id: str | None = None
 
 
 class SynthesizeResponse(BaseModel):
@@ -397,6 +439,11 @@ def tts_synthesize(req: SynthesizeRequest) -> SynthesizeResponse:
         # 503 + Japanese guidance: the fallback contract, not a crash.
         raise HTTPException(status_code=503, detail=str(e)) from e
 
+    from app import progress as progress_registry
+
+    def report(done: float, total: float) -> None:
+        progress_registry.update(req.task_id, "tts", done, total)
+
     try:
         result = tts_service.synthesize_lines(
             lines,
@@ -404,6 +451,7 @@ def tts_synthesize(req: SynthesizeRequest) -> SynthesizeResponse:
             engine,
             voice_map=req.voice_map,
             google_key=req.google_key,
+            progress=report,
         )
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -419,6 +467,7 @@ class DubRequest(BaseModel):
     output_dir: str
     style_id: int = 3
     video_path: str | None = None
+    task_id: str | None = None
 
 
 class SegmentFitModel(BaseModel):
@@ -468,6 +517,11 @@ def dub_render(req: DubRequest) -> DubResponse:
     except rt.NoBackendAvailable:
         rewrite_backend = None
 
+    from app import progress as progress_registry
+
+    def report(done: float, total: float) -> None:
+        progress_registry.update(req.task_id, "dub", done, total)
+
     try:
         result = dub_service.render_dub(
             req.translated_srt_path,
@@ -475,6 +529,7 @@ def dub_render(req: DubRequest) -> DubResponse:
             req.style_id,
             video_path=req.video_path,
             rewrite_backend=rewrite_backend,
+            progress=report,
         )
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller
         raise HTTPException(status_code=500, detail=str(e)) from e

@@ -58,6 +58,7 @@ def translate_srt(
     backend: Backend,
     source_lang: str = "en",
     glossary: Glossary | None = None,
+    progress=None,
 ) -> dict:
     with open(srt_path, encoding="utf-8") as f:
         subs = list(srtlib.parse(f.read()))
@@ -75,6 +76,8 @@ def translate_srt(
         dst = translate_text(src_text, backend, source_lang, context, glossary_text)
 
         out_subs.append(srtlib.Subtitle(index=i + 1, start=sub.start, end=sub.end, content=dst))
+        if progress is not None:
+            progress(i + 1, len(subs))
         if use_context:
             context_pairs.append((src_text, dst))
         if len(samples) < 5:

@@ -226,6 +226,7 @@ pub async fn translate_srt(
     // The cloud key only travels Rust -> sidecar over loopback, never to the UI.
     let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
 
+    let task_id = new_task_id();
     let url = format!("{}/translate/srt", manager.base_url());
     let body = serde_json::json!({
         "srt_path": srt_path,
@@ -234,19 +235,24 @@ pub async fn translate_srt(
         "source_lang": settings.source_lang,
         "openrouter_key": openrouter_key,
         "openrouter_model": settings.openrouter_model,
+        "task_id": task_id,
     });
+
+    let poller = spawn_progress_poller(
+        &app,
+        manager.base_url(),
+        task_id,
+        format!("和訳中…（モデル: {chosen_model}）"),
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(6 * 3600))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    let resp = client.post(&url).json(&body).send().await;
+    poller.abort();
+    let resp = resp.map_err(|e| format!("cannot reach sidecar: {e}"))?;
 
     if resp.status().is_success() {
         resp.json::<TranslateSrtResult>()
@@ -302,6 +308,7 @@ pub async fn summarize_script(
 
     let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
 
+    let task_id = new_task_id();
     let url = format!("{}/summarize/script", manager.base_url());
     let body = serde_json::json!({
         "srt_path": srt_path,
@@ -310,19 +317,24 @@ pub async fn summarize_script(
         "chapters": chapters,
         "openrouter_key": openrouter_key,
         "openrouter_model": settings.openrouter_model,
+        "task_id": task_id,
     });
+
+    let poller = spawn_progress_poller(
+        &app,
+        manager.base_url(),
+        task_id,
+        "要約・台本を生成中…".to_string(),
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(6 * 3600))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    let resp = client.post(&url).json(&body).send().await;
+    poller.abort();
+    let resp = resp.map_err(|e| format!("cannot reach sidecar: {e}"))?;
 
     if resp.status().is_success() {
         resp.json::<SummarizeResult>()
@@ -413,25 +425,31 @@ pub async fn synthesize_script(
         "ゲスト": settings.guest_voice,
     });
 
+    let task_id = new_task_id();
     let url = format!("{}/tts/synthesize", manager.base_url());
     let body = serde_json::json!({
         "script_json_path": script_json_path,
         "output_dir": output_dir,
         "voice_map": voice_map,
         "google_key": google_key,
+        "task_id": task_id,
     });
+
+    let poller = spawn_progress_poller(
+        &app,
+        manager.base_url(),
+        task_id,
+        "日本語音声を合成中…".to_string(),
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(6 * 3600))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    let resp = client.post(&url).json(&body).send().await;
+    poller.abort();
+    let resp = resp.map_err(|e| format!("cannot reach sidecar: {e}"))?;
 
     if resp.status().is_success() {
         resp.json::<SynthesizeResult>()
@@ -504,25 +522,31 @@ pub async fn dub_video(
         }),
     );
 
+    let task_id = new_task_id();
     let url = format!("{}/dub/render", manager.base_url());
     let body = serde_json::json!({
         "translated_srt_path": translated_srt_path,
         "output_dir": work_dir,
         "style_id": settings.narrator_voice,
         "video_path": video_path,
+        "task_id": task_id,
     });
+
+    let poller = spawn_progress_poller(
+        &app,
+        manager.base_url(),
+        task_id,
+        "吹き替えトラックを合成・同期中…".to_string(),
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(6 * 3600))
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    let resp = client.post(&url).json(&body).send().await;
+    poller.abort();
+    let resp = resp.map_err(|e| format!("cannot reach sidecar: {e}"))?;
 
     if resp.status().is_success() {
         resp.json::<DubResult>()
@@ -533,6 +557,52 @@ pub async fn dub_video(
         let detail = resp.text().await.unwrap_or_default();
         Err(format!("dub failed ({status}): {detail}"))
     }
+}
+
+/// Poll the sidecar's progress registry while a long stage call is in flight
+/// and forward percent updates to the UI. Abort the returned handle when the
+/// main request resolves.
+fn spawn_progress_poller(
+    app: &tauri::AppHandle,
+    base_url: String,
+    task_id: String,
+    label: String,
+) -> tauri::async_runtime::JoinHandle<()> {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let client = reqwest::Client::new();
+        let url = format!("{base_url}/progress/{task_id}");
+        loop {
+            tokio::time::sleep(Duration::from_millis(900)).await;
+            let Ok(resp) = client.get(&url).send().await else {
+                continue;
+            };
+            let Ok(v) = resp.json::<serde_json::Value>().await else {
+                continue;
+            };
+            if v["found"].as_bool() != Some(true) {
+                continue;
+            }
+            let done = v["done"].as_f64().unwrap_or(0.0);
+            let total = v["total"].as_f64().unwrap_or(0.0);
+            if total <= 0.0 {
+                continue;
+            }
+            let percent = (done / total * 100.0).clamp(0.0, 100.0);
+            let _ = app.emit(
+                "linguacast://progress",
+                serde_json::json!({
+                    "stage": v["stage"],
+                    "message": format!("{label}（{percent:.0}%）"),
+                    "percent": percent,
+                }),
+            );
+        }
+    })
+}
+
+fn new_task_id() -> String {
+    uuid::Uuid::new_v4().to_string()
 }
 
 /// Open a job's working directory in the OS file manager (artifacts live in a
@@ -599,12 +669,21 @@ pub async fn transcribe(
         }),
     );
 
+    let task_id = new_task_id();
     let url = format!("{}/stt/transcribe", manager.base_url());
     let body = serde_json::json!({
         "audio_path": audio_path,
         "output_dir": output_dir,
         "model_size": model_size.unwrap_or_else(|| "large-v3".to_string()),
+        "task_id": task_id,
     });
+
+    let poller = spawn_progress_poller(
+        &app,
+        manager.base_url(),
+        task_id,
+        "文字起こし中…".to_string(),
+    );
 
     // Transcription can run for many minutes on long videos.
     let client = reqwest::Client::builder()
@@ -612,12 +691,9 @@ pub async fn transcribe(
         .build()
         .map_err(|e| format!("failed to build HTTP client: {e}"))?;
 
-    let resp = client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    let resp = client.post(&url).json(&body).send().await;
+    poller.abort();
+    let resp = resp.map_err(|e| format!("cannot reach sidecar: {e}"))?;
 
     if resp.status().is_success() {
         resp.json::<TranscribeResult>()

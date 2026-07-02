@@ -81,6 +81,7 @@ export default function Home() {
 
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  const [progressPercent, setProgressPercent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<MediaMeta | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -384,7 +385,10 @@ export default function Home() {
   // Subscribe to pipeline progress events (setState in an external callback).
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    void onProgress((e) => setProgress(e.message)).then((u) => {
+    void onProgress((e) => {
+      setProgress(e.message);
+      setProgressPercent(e.percent ?? null);
+    }).then((u) => {
       unlisten = u;
     });
     return () => unlisten?.();
@@ -871,7 +875,14 @@ export default function Home() {
 
       {busy && progress && (
         <section className="banner banner-info">
-          <span className="spinner" aria-hidden /> {progress}
+          <div className="progress-line">
+            <span className="spinner" aria-hidden /> {progress}
+          </div>
+          {progressPercent != null && (
+            <div className="progress-track" aria-hidden>
+              <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+            </div>
+          )}
         </section>
       )}
 

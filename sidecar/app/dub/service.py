@@ -72,6 +72,7 @@ def render_dub(
     video_path: str | None = None,
     voicevox_base: str = voicevox.DEFAULT_BASE,
     rewrite_backend: Backend | None = None,
+    progress=None,
 ) -> dict:
     with open(translated_srt_path, encoding="utf-8") as f:
         subs = list(srtlib.parse(f.read()))
@@ -105,6 +106,8 @@ def render_dub(
     framerate = None
 
     for i, block in enumerate(blocks):
+        if progress is not None:
+            progress(i, len(blocks))
         slot = max(0.1, block.end - block.start)
         next_start = blocks[i + 1].start if i + 1 < len(blocks) else None
         budget = budgets[i]
