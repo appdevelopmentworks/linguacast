@@ -119,6 +119,10 @@ pub struct Settings {
     pub narrator_voice: u32,
     /// VOICEVOX style id for guest lines in dialogue scripts (2 = 四国めたん ノーマル).
     pub guest_voice: u32,
+    /// Edge TTS voice for narrator/host lines.
+    pub edge_narrator_voice: String,
+    /// Edge TTS voice for guest lines in dialogue scripts.
+    pub edge_guest_voice: String,
 }
 
 impl Default for Settings {
@@ -129,6 +133,8 @@ impl Default for Settings {
             source_lang: "en".to_string(),
             narrator_voice: 3,
             guest_voice: 2,
+            edge_narrator_voice: "ja-JP-NanamiNeural".to_string(),
+            edge_guest_voice: "ja-JP-KeitaNeural".to_string(),
         }
     }
 }

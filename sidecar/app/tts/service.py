@@ -49,6 +49,7 @@ def synthesize_lines(
     voice_map: dict[str, int] | None = None,
     google_key: str | None = None,
     google_voice_map: dict[str, str] | None = None,
+    edge_voice_map: dict[str, str] | None = None,
     voicevox_base: str = voicevox.DEFAULT_BASE,
     progress=None,
 ) -> dict:
@@ -62,6 +63,7 @@ def synthesize_lines(
 
     voice_map = voice_map or {}
     google_voice_map = google_voice_map or {}
+    edge_voice_map = edge_voice_map or {}
     default_style = next(iter(voice_map.values()), 3)  # VOICEVOX: 3 = ずんだもん(ノーマル)
 
     blobs: list[bytes] = []
@@ -80,10 +82,11 @@ def synthesize_lines(
             style = voice_map.get(speaker, default_style)
             sentence_blobs = voicevox.synthesize_long_text(text, style, voicevox_base)
         elif engine == "edge":
-            voice = (
+            voice = edge_voice_map.get(
+                speaker,
                 edge_tts_backend.GUEST_VOICE
                 if speaker == "ゲスト"
-                else edge_tts_backend.DEFAULT_VOICE
+                else edge_tts_backend.DEFAULT_VOICE,
             )
             sentence_blobs = [edge_tts_backend.synthesize_text(text, voice)]
         else:

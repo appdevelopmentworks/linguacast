@@ -7,6 +7,7 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import {
   checkDependencies,
   dubVideo,
+  edgeVoices,
   fetchMetadata,
   FIT_METHOD_LABELS,
   getPresets,
@@ -38,6 +39,7 @@ import {
   routingLabel,
   type DependencyReport,
   type DubResult,
+  type EdgeVoice,
   type Job,
   type JobSummary,
   type MediaMeta,
@@ -113,6 +115,7 @@ export default function Home() {
   const [newPreset, setNewPreset] = useState({ category: "", label: "", url: "" });
   const [dragActive, setDragActive] = useState(false);
   const [orModels, setOrModels] = useState<OpenRouterModel[]>([]);
+  const [edgeVoiceList, setEdgeVoiceList] = useState<EdgeVoice[]>([]);
 
   // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
@@ -395,6 +398,14 @@ export default function Home() {
       .catch(() => {});
   }, [showSettings, orModels.length]);
 
+  // Fetch Edge TTS voices once, when the settings panel first opens.
+  useEffect(() => {
+    if (!showSettings || edgeVoiceList.length > 0) return;
+    void edgeVoices()
+      .then(setEdgeVoiceList)
+      .catch(() => {});
+  }, [showSettings, edgeVoiceList.length]);
+
   // Periodic engine health refresh for the header indicators (LLM / VOICEVOX).
   useEffect(() => {
     const timer = setInterval(() => {
@@ -626,16 +637,28 @@ export default function Home() {
           >
             ● LLM
           </span>
-          <span
-            className={`engine-chip ${tts?.voicevox_available ? "engine-on" : "engine-off"}`}
-            title={
-              tts?.voicevox_available
-                ? `VOICEVOX 稼働中（v${tts.voicevox_version}）`
-                : "VOICEVOX が起動していません"
-            }
-          >
-            ● VOICEVOX
-          </span>
+          {tts?.voicevox_available ? (
+            <span
+              className="engine-chip engine-on"
+              title={`VOICEVOX 稼働中（v${tts.voicevox_version}）`}
+            >
+              ● VOICEVOX
+            </span>
+          ) : tts?.edge_available ? (
+            <span
+              className="engine-chip engine-on"
+              title="VOICEVOX 未起動のため、無料の Edge TTS（Microsoft音声）で読み上げます"
+            >
+              ● Edge TTS
+            </span>
+          ) : (
+            <span
+              className="engine-chip engine-off"
+              title="音声合成が利用できません（VOICEVOX 未起動・Edge TTS 不可）"
+            >
+              ● TTS
+            </span>
+          )}
           <button
             className="gear-btn"
             onClick={() => setShowSettings((v) => !v)}
@@ -677,7 +700,7 @@ export default function Home() {
               ))}
             </select>
 
-            <label className="settings-label">ナレーター / ホスト音声</label>
+            <label className="settings-label">VOICEVOX: ナレーター / ホスト音声</label>
             <select
               className="model-select"
               value={settings.narrator_voice}
@@ -694,19 +717,57 @@ export default function Home() {
               ))}
             </select>
 
-            <label className="settings-label">ゲスト音声（対話形式）</label>
+            <label className="settings-label">VOICEVOX: ゲスト音声</label>
+            <div>
+              <select
+                className="model-select"
+                value={settings.guest_voice}
+                onChange={(e) => changeSetting({ guest_voice: Number(e.target.value) })}
+                disabled={voiceChoices.length === 0}
+              >
+                {voiceChoices.length === 0 && (
+                  <option value={settings.guest_voice}>（VOICEVOX 未接続）</option>
+                )}
+                {voiceChoices.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+              <div className="mode-note">
+                ※
+                ゲスト音声は「要約」の対話台本で使われます。吹き替えは現在ナレーター音声のみ（話者の自動判別は将来対応予定）
+              </div>
+            </div>
+
+            <label className="settings-label">Edge TTS: ナレーター / ホスト音声</label>
             <select
               className="model-select"
-              value={settings.guest_voice}
-              onChange={(e) => changeSetting({ guest_voice: Number(e.target.value) })}
-              disabled={voiceChoices.length === 0}
+              value={settings.edge_narrator_voice}
+              onChange={(e) => changeSetting({ edge_narrator_voice: e.target.value })}
             >
-              {voiceChoices.length === 0 && (
-                <option value={settings.guest_voice}>（VOICEVOX 未接続）</option>
+              {edgeVoiceList.length === 0 && (
+                <option value={settings.edge_narrator_voice}>{settings.edge_narrator_voice}</option>
               )}
-              {voiceChoices.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label}
+              {edgeVoiceList.map((v) => (
+                <option key={v.short_name} value={v.short_name}>
+                  {v.short_name}（{v.gender === "Female" ? "女性" : "男性"}）
+                </option>
+              ))}
+            </select>
+
+            <label className="settings-label">Edge TTS: ゲスト音声</label>
+            <select
+              className="model-select"
+              value={settings.edge_guest_voice}
+              onChange={(e) => changeSetting({ edge_guest_voice: e.target.value })}
+            >
+              {edgeVoiceList.length === 0 && (
+                <option value={settings.edge_guest_voice}>{settings.edge_guest_voice}</option>
+              )}
+              {edgeVoiceList.map((v) => (
+                <option key={v.short_name} value={v.short_name}>
+                  {v.short_name}（{v.gender === "Female" ? "女性" : "男性"}）
                 </option>
               ))}
             </select>

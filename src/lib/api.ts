@@ -79,6 +79,8 @@ export type Settings = {
   source_lang: string;
   narrator_voice: number;
   guest_voice: number;
+  edge_narrator_voice: string;
+  edge_guest_voice: string;
 };
 
 export type TierInfo = { available: boolean; models: string[] };
@@ -116,9 +118,16 @@ export type SpeakerInfo = { name: string; styles: SpeakerStyle[] };
 export type TtsStatus = {
   voicevox_available: boolean;
   voicevox_version: string | null;
+  edge_available: boolean;
   speakers: SpeakerInfo[];
   warning: string | null;
 };
+
+export type EdgeVoice = { short_name: string; gender: string };
+
+export function edgeVoices(): Promise<EdgeVoice[]> {
+  return invoke<EdgeVoice[]>("edge_voices");
+}
 
 export type SynthesizeResult = {
   engine: string;

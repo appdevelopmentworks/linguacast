@@ -359,6 +359,7 @@ class SpeakerInfo(BaseModel):
 class TtsStatusResponse(BaseModel):
     voicevox_available: bool
     voicevox_version: str | None
+    edge_available: bool = False
     speakers: list[SpeakerInfo]
     # Japanese guidance shown by the UI when VOICEVOX is down (gotcha #4).
     warning: str | None
@@ -367,12 +368,15 @@ class TtsStatusResponse(BaseModel):
 @app.get("/tts/status", response_model=TtsStatusResponse)
 def tts_status() -> TtsStatusResponse:
     from app.tts import voicevox
+    from app.tts.cloud import edge_tts_backend
 
+    edge_ok = edge_tts_backend.available()
     version = voicevox.health()
     if version is None:
         return TtsStatusResponse(
             voicevox_available=False,
             voicevox_version=None,
+            edge_available=edge_ok,
             speakers=[],
             warning=(
                 "VOICEVOX が起動していません。このままでも無料の Edge TTS"
@@ -387,9 +391,28 @@ def tts_status() -> TtsStatusResponse:
     return TtsStatusResponse(
         voicevox_available=True,
         voicevox_version=version,
+        edge_available=edge_ok,
         speakers=[SpeakerInfo(**s) for s in speaker_list],
         warning=None,
     )
+
+
+class EdgeVoice(BaseModel):
+    short_name: str
+    gender: str
+
+
+@app.get("/tts/edge_voices", response_model=list[EdgeVoice])
+def tts_edge_voices() -> list[EdgeVoice]:
+    """Japanese voices available on the Edge TTS endpoint (needs internet)."""
+    from app.tts.cloud import edge_tts_backend
+
+    try:
+        return [EdgeVoice(**v) for v in edge_tts_backend.list_ja_voices()]
+    except Exception as e:  # noqa: BLE001 — offline etc.
+        raise HTTPException(
+            status_code=503, detail=f"Edge TTS の話者一覧を取得できません: {e}"
+        ) from e
 
 
 class SynthesizeLine(BaseModel):
@@ -404,7 +427,9 @@ class SynthesizeRequest(BaseModel):
     script_json_path: str | None = None
     # Speaker role -> VOICEVOX style id (e.g. {"ナレーター": 3, "ホスト": 3, "ゲスト": 2}).
     voice_map: dict[str, int] | None = None
-    engine: str | None = None  # auto (None) | voicevox | google
+    # Speaker role -> Edge TTS voice short name (e.g. ja-JP-NanamiNeural).
+    edge_voice_map: dict[str, str] | None = None
+    engine: str | None = None  # auto (None) | voicevox | edge | google
     google_key: str | None = None
     task_id: str | None = None
 
@@ -451,6 +476,7 @@ def tts_synthesize(req: SynthesizeRequest) -> SynthesizeResponse:
             engine,
             voice_map=req.voice_map,
             google_key=req.google_key,
+            edge_voice_map=req.edge_voice_map,
             progress=report,
         )
     except Exception as e:  # noqa: BLE001 — surface a clean error to the caller

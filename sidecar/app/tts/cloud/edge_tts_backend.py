@@ -27,6 +27,24 @@ def available() -> bool:
         return False
 
 
+_VOICES_CACHE: list[dict] | None = None
+
+
+def list_ja_voices() -> list[dict]:
+    """Japanese voices offered by the Edge endpoint (cached; needs internet)."""
+    global _VOICES_CACHE
+    if _VOICES_CACHE is None:
+        import edge_tts
+
+        voices = asyncio.run(edge_tts.list_voices())
+        _VOICES_CACHE = [
+            {"short_name": v["ShortName"], "gender": v["Gender"]}
+            for v in voices
+            if v["Locale"] == "ja-JP"
+        ]
+    return _VOICES_CACHE
+
+
 async def _stream_mp3(text: str, voice: str) -> bytes:
     import edge_tts
 

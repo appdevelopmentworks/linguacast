@@ -418,8 +418,32 @@ pub struct SpeakerInfo {
 pub struct TtsStatus {
     voicevox_available: bool,
     voicevox_version: Option<String>,
+    #[serde(default)]
+    edge_available: bool,
     speakers: Vec<SpeakerInfo>,
     warning: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EdgeVoice {
+    short_name: String,
+    gender: String,
+}
+
+#[tauri::command]
+pub async fn edge_voices(
+    manager: State<'_, Arc<SidecarManager>>,
+) -> Result<Vec<EdgeVoice>, String> {
+    let url = format!("{}/tts/edge_voices", manager.base_url());
+    let resp = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(resp.text().await.unwrap_or_default());
+    }
+    resp.json::<Vec<EdgeVoice>>()
+        .await
+        .map_err(|e| format!("invalid edge voices response: {e}"))
 }
 
 #[tauri::command]
@@ -465,6 +489,11 @@ pub async fn synthesize_script(
         "ホスト": settings.narrator_voice,
         "ゲスト": settings.guest_voice,
     });
+    let edge_voice_map = serde_json::json!({
+        "ナレーター": settings.edge_narrator_voice,
+        "ホスト": settings.edge_narrator_voice,
+        "ゲスト": settings.edge_guest_voice,
+    });
 
     let task_id = new_task_id();
     let url = format!("{}/tts/synthesize", manager.base_url());
@@ -472,6 +501,7 @@ pub async fn synthesize_script(
         "script_json_path": script_json_path,
         "output_dir": output_dir,
         "voice_map": voice_map,
+        "edge_voice_map": edge_voice_map,
         "google_key": google_key,
         "task_id": task_id,
     });
