@@ -236,6 +236,19 @@ export function hasGroqKey(): Promise<boolean> {
   return invoke<boolean>("has_groq_key");
 }
 
+export type SttInfo = {
+  platform: string;
+  machine: string;
+  backend: string;
+  faster_whisper: boolean;
+  cuda_devices: number;
+  error: string | null;
+};
+
+export function sttInfo(): Promise<SttInfo> {
+  return invoke<SttInfo>("stt_info");
+}
+
 export function listChannelUploads(channelUrl: string, limit?: number): Promise<VideoEntry[]> {
   return invoke<VideoEntry[]>("list_channel_uploads", { channelUrl, limit });
 }

@@ -29,6 +29,7 @@ import {
   setGroqKey,
   setOpenrouterKey,
   shareFile,
+  sttInfo,
   summarizeScript,
   synthesizeScript,
   tierLabel,
@@ -50,6 +51,7 @@ import {
   type Settings,
   type ShareInfo,
   type SidecarHealth,
+  type SttInfo,
   type SummarizeResult,
   type SynthesizeResult,
   type TranscribeResult,
@@ -120,11 +122,12 @@ export default function Home() {
   const [dragActive, setDragActive] = useState(false);
   const [orModels, setOrModels] = useState<OpenRouterModel[]>([]);
   const [edgeVoiceList, setEdgeVoiceList] = useState<EdgeVoice[]>([]);
+  const [stt, setStt] = useState<SttInfo | null>(null);
 
   // Initial load: dependency check, presets, sidecar health, settings, LLM tiers.
   useEffect(() => {
     const init = async () => {
-      const [d, p, h, s, b, t, j, ok, gk, qk] = await Promise.allSettled([
+      const [d, p, h, s, b, t, j, ok, gk, qk, si] = await Promise.allSettled([
         checkDependencies(),
         getPresets(),
         pingSidecar(),
@@ -135,6 +138,7 @@ export default function Home() {
         hasOpenrouterKey(),
         hasGoogleTtsKey(),
         hasGroqKey(),
+        sttInfo(),
       ]);
       if (d.status === "fulfilled") setDeps(d.value);
       if (p.status === "fulfilled") setPresets(p.value);
@@ -146,6 +150,7 @@ export default function Home() {
       if (ok.status === "fulfilled") setOrKeySet(ok.value);
       if (gk.status === "fulfilled") setGoogleKeySet(gk.value);
       if (qk.status === "fulfilled") setGroqKeySet(qk.value);
+      if (si.status === "fulfilled") setStt(si.value);
     };
     void init();
   }, []);
@@ -640,6 +645,38 @@ export default function Home() {
     return models.find((m) => !m.toLowerCase().includes("embed")) ?? null;
   };
 
+  const sttChip = (() => {
+    if (settings?.stt_engine === "groq") {
+      const model = settings.groq_model.replace("whisper-", "");
+      if (groqKeySet) {
+        return {
+          on: true,
+          label: `Whisper｜Groq (${model})`,
+          title: "文字起こしはクラウド（Groq Whisper・無料枠 2,000件/日）で実行します",
+        };
+      }
+      return {
+        on: false,
+        label: "Whisper｜Groq (キー未設定)",
+        title: "Groq が選択されていますが APIキーが未登録です。⚙ 設定で登録してください",
+      };
+    }
+    if (stt?.faster_whisper) {
+      const device = (stt.cuda_devices ?? 0) > 0 ? "CUDA" : "CPU";
+      return {
+        on: true,
+        label: `Whisper｜ローカル (${device})`,
+        title: `文字起こしはローカル（faster-whisper / large-v3）で実行します。デバイス: ${device}`,
+      };
+    }
+    return {
+      on: false,
+      label: "Whisper｜ローカル (未導入)",
+      title:
+        "ローカルの faster-whisper が利用できません。⚙ 設定で「クラウド（Groq）」に切り替えると文字起こしできます",
+    };
+  })();
+
   const llmChip = (() => {
     const preferred = settings?.translation_model;
     if (backends?.ollama.available) {
@@ -684,6 +721,12 @@ export default function Home() {
             title={llmChip.title}
           >
             ● {llmChip.label}
+          </span>
+          <span
+            className={`engine-chip ${sttChip.on ? "engine-on" : "engine-off"}`}
+            title={sttChip.title}
+          >
+            ● {sttChip.label}
           </span>
           {tts?.voicevox_available ? (
             <span

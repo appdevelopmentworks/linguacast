@@ -383,6 +383,27 @@ pub async fn summarize_script(
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct SttInfo {
+    platform: String,
+    machine: String,
+    backend: String,
+    faster_whisper: bool,
+    cuda_devices: i64,
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn stt_info(manager: State<'_, Arc<SidecarManager>>) -> Result<SttInfo, String> {
+    let url = format!("{}/stt/info", manager.base_url());
+    let resp = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("cannot reach sidecar: {e}"))?;
+    resp.json::<SttInfo>()
+        .await
+        .map_err(|e| format!("invalid stt info response: {e}"))
+}
+
 const GROQ_KEY_NAME: &str = "groq_api_key";
 
 #[tauri::command]
