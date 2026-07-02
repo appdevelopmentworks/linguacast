@@ -33,9 +33,16 @@ body {
 }
 
 .container {
-  max-width: 760px;
+  /* Fluid width: grows with the window up to a comfortable reading width. */
+  max-width: 1160px;
   margin: 0 auto;
-  padding: 28px 24px 96px;
+  padding: 28px clamp(16px, 3vw, 40px) 96px;
+}
+
+@media (max-width: 720px) {
+  .container {
+    padding-top: 16px;
+  }
 }
 
 .app-header {
@@ -112,6 +119,13 @@ body {
   margin-top: 12px;
 }
 
+@media (max-width: 700px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
 .settings-label {
   font-size: 13px;
   color: var(--muted);
@@ -170,6 +184,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .mini-btn:hover {
@@ -327,6 +343,8 @@ body {
   border: none;
   border-radius: 8px;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .start-btn:disabled {
@@ -462,8 +480,10 @@ body {
 
 .artifact-row {
   display: flex;
-  gap: 12px;
-  padding: 6px 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 8px 0;
   font-size: 13px;
   border-top: 1px solid var(--border);
 }
@@ -486,6 +506,8 @@ code {
 .path {
   word-break: break-all;
   color: var(--text);
+  flex: 1 1 260px;
+  min-width: 240px;
 }
 
 .transcript-preview {
