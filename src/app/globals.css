@@ -78,6 +78,9 @@ body {
   border: 1px solid var(--border);
   cursor: default;
   white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .engine-chip.engine-on {

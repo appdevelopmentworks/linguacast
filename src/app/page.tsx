@@ -614,7 +614,48 @@ export default function Home() {
 
   const sidecarOk = health?.reachable ?? false;
   const depsMissing = deps ? deps.tools.filter((t) => !t.available) : [];
-  const llmOn = Boolean(backends?.ollama.available || backends?.lmstudio.available);
+
+  // Mirror the router's model pick so the chip shows what will actually run.
+  const pickTranslationModel = (models: string[], preferred?: string): string | null => {
+    if (models.length === 0) return null;
+    if (preferred && models.includes(preferred)) return preferred;
+    const tg = models.find((m) => m.toLowerCase().includes("translategemma"));
+    if (tg) return tg;
+    return models.find((m) => !m.toLowerCase().includes("embed")) ?? null;
+  };
+
+  const llmChip = (() => {
+    const preferred = settings?.translation_model;
+    if (backends?.ollama.available) {
+      const model = pickTranslationModel(backends.ollama.models, preferred);
+      return {
+        on: true,
+        label: `Ollama｜${model ?? "モデルなし"}`,
+        title: `ローカルLLM（Ollama）に接続中。翻訳モデル: ${model ?? "なし"}\n保有モデル: ${backends.ollama.models.join(", ") || "なし"}`,
+      };
+    }
+    if (backends?.lmstudio.available) {
+      const model = pickTranslationModel(backends.lmstudio.models, preferred);
+      return {
+        on: true,
+        label: `LM Studio｜${model ?? "モデルなし"}`,
+        title: `Ollama 未起動のため LM Studio（ローカル）を使用します。翻訳モデル: ${model ?? "なし"}`,
+      };
+    }
+    if (orKeySet && settings?.openrouter_model) {
+      return {
+        on: true,
+        label: `OpenRouter｜${settings.openrouter_model}`,
+        title: "ローカルLLMが見つからないため、クラウド（OpenRouter）を使用します",
+      };
+    }
+    return {
+      on: false,
+      label: "LLM なし",
+      title:
+        "翻訳・要約に使えるLLMがありません。Ollama / LM Studio を起動するか、設定で OpenRouter を登録してください",
+    };
+  })();
 
   return (
     <main className="container">
@@ -623,19 +664,10 @@ export default function Home() {
         <span className="tagline">外国語の一次情報を、日本語の音声で。</span>
         <div className="header-right">
           <span
-            className={`engine-chip ${llmOn ? "engine-on" : "engine-off"}`}
-            title={
-              llmOn
-                ? `ローカルLLM 稼働中（${[
-                    backends?.ollama.available ? "Ollama" : null,
-                    backends?.lmstudio.available ? "LM Studio" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" / ")}）`
-                : "ローカルLLM が見つかりません（Ollama / LM Studio 未起動）"
-            }
+            className={`engine-chip ${llmChip.on ? "engine-on" : "engine-off"}`}
+            title={llmChip.title}
           >
-            ● LLM
+            ● {llmChip.label}
           </span>
           {tts?.voicevox_available ? (
             <span
