@@ -237,6 +237,7 @@ class TranslateSrtRequest(BaseModel):
     cloud_provider: str = "openrouter"
     groq_key: str | None = None
     groq_llm_model: str | None = None
+    thinking: bool = False  # enable chain-of-thought (slower; default off)
     task_id: str | None = None
 
 
@@ -274,6 +275,7 @@ def translate_srt_endpoint(req: TranslateSrtRequest) -> TranslateSrtResponse:
             cloud_provider=req.cloud_provider,
             groq_key=req.groq_key,
             groq_model=req.groq_llm_model,
+            thinking=req.thinking,
         )
     except rt.NoBackendAvailable as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -318,6 +320,7 @@ class SummarizeRequest(BaseModel):
     cloud_provider: str = "openrouter"
     groq_key: str | None = None
     groq_llm_model: str | None = None
+    thinking: bool = False  # enable chain-of-thought (slower; default off)
     # Test hook: shrink the single-pass budget to force hierarchical mode.
     single_pass_budget: int | None = None
     task_id: str | None = None
@@ -361,6 +364,7 @@ def summarize_script(req: SummarizeRequest) -> SummarizeResponse:
             cloud_provider=req.cloud_provider,
             groq_key=req.groq_key,
             groq_model=req.groq_llm_model,
+            thinking=req.thinking,
         )
     except rt.NoBackendAvailable as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -557,6 +561,7 @@ class DubRequest(BaseModel):
     openrouter_model: str | None = None
     groq_key: str | None = None
     groq_llm_model: str | None = None
+    thinking: bool = False  # enable chain-of-thought (slower; default off)
     task_id: str | None = None
 
 
@@ -617,6 +622,7 @@ def dub_render(req: DubRequest) -> DubResponse:
             cloud_provider=req.cloud_provider,
             groq_key=req.groq_key,
             groq_model=req.groq_llm_model,
+            thinking=req.thinking,
         )
     except rt.NoBackendAvailable:
         rewrite_backend = None

@@ -285,6 +285,7 @@ pub async fn translate_srt(
         "cloud_provider": settings.cloud_llm_provider,
         "groq_key": groq_llm_key,
         "groq_llm_model": settings.groq_llm_model,
+        "thinking": settings.thinking,
         "task_id": task_id,
     });
 
@@ -371,6 +372,7 @@ pub async fn summarize_script(
         "cloud_provider": settings.cloud_llm_provider,
         "groq_key": groq_llm_key,
         "groq_llm_model": settings.groq_llm_model,
+        "thinking": settings.thinking,
         "task_id": task_id,
     });
 
@@ -714,6 +716,7 @@ pub async fn dub_video(
         "cloud_provider": settings.cloud_llm_provider,
         "groq_key": groq_llm_key,
         "groq_llm_model": settings.groq_llm_model,
+        "thinking": settings.thinking,
         "task_id": task_id,
     });
 

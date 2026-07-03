@@ -29,6 +29,11 @@ class Backend:
     api_key: str | None = None
     keep_alive: str | None = None
     available_models: list[str] = field(default_factory=list)
+    # ``reasoning_effort`` passed to the chat API. "none" disables chain-of-thought
+    # on thinking models (Qwen3 etc.), which otherwise emit long hidden reasoning
+    # and make per-segment work 10-100x slower. Set by resolve_backend from the
+    # user's "thinking" toggle (default off -> "none"); None means provider default.
+    reasoning_effort: str | None = None
 
 
 class NoBackendAvailable(RuntimeError):
@@ -81,32 +86,42 @@ def resolve_backend(
     cloud_provider: str = "openrouter",
     groq_key: str | None = None,
     groq_model: str | None = None,
+    thinking: bool = False,
 ) -> Backend:
+    # Off by default: disable chain-of-thought everywhere (translation/summary/dub
+    # never need it and it is 10-100x slower). "none" is honored by Ollama and Groq;
+    # providers/models that don't support it are handled by the client's fallback.
+    reasoning = None if thinking else "none"
+
     if forced_tier in (None, "ollama"):
         models = llm.health_ollama(OLLAMA_BASE)
         if models is not None:
             model = _pick_model(preferred_model, models, require_general)
             if model:
-                return Backend("ollama", OLLAMA_V1, model, None, OLLAMA_KEEP_ALIVE, models)
+                return Backend(
+                    "ollama", OLLAMA_V1, model, None, OLLAMA_KEEP_ALIVE, models, reasoning
+                )
 
     if forced_tier in (None, "lmstudio"):
         models = llm.health_openai_models(LMSTUDIO_V1)
         if models is not None:
             model = _pick_model(preferred_model, models, require_general)
             if model:
-                return Backend("lmstudio", LMSTUDIO_V1, model, None, None, models)
+                return Backend("lmstudio", LMSTUDIO_V1, model, None, None, models, reasoning)
 
     # Cloud tier: user-selected provider; both are OpenAI-compatible, so each
     # is just a base URL + key for the unified client (no per-provider code).
     if forced_tier in (None, "groq") and cloud_provider == "groq" and groq_key and groq_model:
-        return Backend("groq", GROQ_V1, groq_model, groq_key, None, [])
+        return Backend("groq", GROQ_V1, groq_model, groq_key, None, [], reasoning)
     if (
         forced_tier in (None, "openrouter")
         and cloud_provider == "openrouter"
         and openrouter_key
         and openrouter_model
     ):
-        return Backend("openrouter", OPENROUTER_V1, openrouter_model, openrouter_key, None, [])
+        return Backend(
+            "openrouter", OPENROUTER_V1, openrouter_model, openrouter_key, None, [], reasoning
+        )
 
     raise NoBackendAvailable(
         "利用可能な翻訳バックエンドがありません（Ollama / LM Studio が未起動で、"

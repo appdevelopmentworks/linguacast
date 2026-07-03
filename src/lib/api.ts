@@ -85,6 +85,7 @@ export type Settings = {
   groq_model: string;
   cloud_llm_provider: string;
   groq_llm_model: string;
+  thinking: boolean;
 };
 
 export type TierInfo = { available: boolean; models: string[] };

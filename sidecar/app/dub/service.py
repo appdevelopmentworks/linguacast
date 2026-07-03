@@ -269,6 +269,7 @@ def _batch_shorten(
                 temperature=0.2,
                 timeout=600.0,
                 keep_alive=backend.keep_alive,
+                reasoning_effort=backend.reasoning_effort,
             )
         except Exception:  # noqa: BLE001 — shortening is best-effort
             continue

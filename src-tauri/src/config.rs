@@ -131,6 +131,10 @@ pub struct Settings {
     pub cloud_llm_provider: String,
     /// Groq LLM model id (picked from the Groq catalogue in settings).
     pub groq_llm_model: String,
+    /// Enable LLM chain-of-thought ("thinking"). Off by default: translation /
+    /// summarization / dub never need it and thinking models (Qwen3 etc.) are
+    /// 10-100x slower with it on. Applies to local and cloud tiers.
+    pub thinking: bool,
 }
 
 impl Default for Settings {
@@ -147,6 +151,7 @@ impl Default for Settings {
             groq_model: "whisper-large-v3-turbo".to_string(),
             cloud_llm_provider: "openrouter".to_string(),
             groq_llm_model: String::new(),
+            thinking: false,
         }
     }
 }

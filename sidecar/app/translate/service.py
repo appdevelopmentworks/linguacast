@@ -28,6 +28,32 @@ def _headers_for(backend: Backend) -> dict[str, str] | None:
     return _OPENROUTER_HEADERS if backend.tier == "openrouter" else None
 
 
+def _warmup(backend: Backend) -> None:
+    """Best-effort: load a local model into VRAM before the per-segment loop.
+
+    A large local model can take longer to load than a single segment's timeout,
+    which would abort the whole job on segment 0. Paying that cost once here, with
+    a generous timeout, keeps the actual translation calls fast. No-op for cloud
+    tiers (nothing to warm up) and non-fatal on failure — a real error will
+    resurface on the first real segment.
+    """
+    if backend.tier not in ("ollama", "lmstudio"):
+        return
+    try:
+        llm.chat(
+            backend.base_url,
+            backend.api_key,
+            backend.model,
+            [{"role": "user", "content": "ping"}],
+            keep_alive=backend.keep_alive,
+            timeout=600.0,
+            retries=0,
+            reasoning_effort=backend.reasoning_effort,
+        )
+    except Exception:  # noqa: BLE001 — warmup is advisory only
+        pass
+
+
 def translate_text(
     text: str,
     backend: Backend,
@@ -50,6 +76,7 @@ def translate_text(
         messages,
         keep_alive=backend.keep_alive,
         extra_headers=_headers_for(backend),
+        reasoning_effort=backend.reasoning_effort,
     )
     return out.strip()
 
@@ -75,6 +102,11 @@ def translate_srt(
     os.makedirs(output_dir, exist_ok=True)
     fingerprint = hashlib.sha1(srt_text.encode("utf-8")).hexdigest()
     done = _load_partial(output_dir, fingerprint)
+
+    # Load a local model once before the loop so segment 0 doesn't time out on a
+    # cold VRAM load (only if there is still work left after resuming).
+    if len(done) < len(subs):
+        _warmup(backend)
 
     context_pairs: list[tuple[str, str]] = []
     out_subs: list[srtlib.Subtitle] = []

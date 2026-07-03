@@ -53,6 +53,7 @@ def _chat(backend: Backend, messages: list[dict[str, str]], temperature: float) 
         temperature=temperature,
         timeout=CALL_TIMEOUT,
         keep_alive=backend.keep_alive,
+        reasoning_effort=backend.reasoning_effort,
     ).strip()
 
 

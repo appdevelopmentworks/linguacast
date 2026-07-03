@@ -863,6 +863,22 @@ export default function Home() {
               ))}
             </select>
 
+            <label className="settings-label">思考モード（thinking）</label>
+            <label
+              style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", cursor: "pointer" }}
+            >
+              <input
+                type="checkbox"
+                checked={settings.thinking}
+                onChange={(e) => changeSetting({ thinking: e.target.checked })}
+                style={{ marginTop: "0.2rem" }}
+              />
+              <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                推論（思考）を有効化します。翻訳・要約がやや丁寧になる場合がありますが、Qwen3 等の思考モデルでは
+                大幅に遅くなります。ローカル・クラウド両方に適用（既定: OFF）。
+              </span>
+            </label>
+
             <label className="settings-label">原語（翻訳元）</label>
             <select
               className="model-select"

@@ -56,13 +56,24 @@ def general_messages(
     src = language_name(source_lang)
     tgt = language_name(target_lang)
     system = (
-        f"You are a professional {src}-to-{tgt} translator specializing in natural, fluent "
-        f"{tgt} suitable for podcast narration. Translate faithfully while making it sound "
-        f"natural in {tgt}. Output ONLY the {tgt} translation — no notes, labels, quotes, "
-        f"or the original text."
+        f"You are a professional {src}-to-{tgt} translator writing the script for a "
+        f"Japanese-dubbed version of educational spoken content — lectures (e.g. university "
+        f"courses), coding tutorials, interviews, and finance/investing talks. Translate "
+        f"faithfully and completely, but write it the way a skilled Japanese narrator would "
+        f"actually say it aloud, not a stiff word-for-word rendering. Rules:\n"
+        f"- Use natural, fluent spoken {tgt} (polite です・ます narration) with smooth "
+        f"connectives; avoid translationese and redundant pronouns.\n"
+        f"- Convey the speaker's intent and nuance (explaining, arguing, joking), not just "
+        f"the surface words.\n"
+        f"- Keep established technical terms, product/library/API names, and proper nouns "
+        f"in their common form (English or standard katakana); do NOT invent awkward literal "
+        f"translations of jargon, and keep terminology consistent across segments.\n"
+        f"- Preserve numbers, units, code, and identifiers exactly.\n"
+        f"Output ONLY the {tgt} translation — no notes, labels, quotes, romaji, or the "
+        f"source text."
     )
     if tone:
-        system += f" Desired tone: {tone}."
+        system += f" Desired tone/register: {tone}."
 
     parts: list[str] = []
     if glossary_text:
