@@ -33,6 +33,7 @@ import {
   sttInfo,
   summarizeScript,
   synthesizeScript,
+  synthesizeSrt,
   tierLabel,
   transcribe,
   translateBackends,
@@ -63,7 +64,7 @@ import {
 } from "@/lib/api";
 
 type TranslationMode = "full" | "summary";
-type DeliveryMode = "subs" | "dub";
+type DeliveryMode = "subs" | "dub" | "audio";
 
 const MEDIA_EXTENSIONS = [
   "mp4",
@@ -201,6 +202,27 @@ export default function Home() {
       setProgress("吹き替え生成を開始しています…");
       try {
         setDub(await dubVideo(srt, job.work_dir, job.meta.source_url));
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+    },
+    [job, translation],
+  );
+
+  // Read the full translation aloud (audio-only, no timing fit / nothing cut).
+  const runReadAloud = useCallback(
+    async (translatedSrtPath?: string) => {
+      const srt = translatedSrtPath ?? translation?.translated_srt_path;
+      if (!job || !srt) return;
+      setBusy(true);
+      setError(null);
+      setAudio(null);
+      setProgress("全文の読み上げを開始しています…");
+      try {
+        setAudio(await synthesizeSrt(srt, job.work_dir));
       } catch (e) {
         setError(String(e));
       } finally {
@@ -540,6 +562,9 @@ export default function Home() {
           if (deliveryMode === "dub") {
             const d = await dubVideo(tr.translated_srt_path, j.work_dir, j.meta.source_url);
             setDub(d);
+          } else if (deliveryMode === "audio") {
+            const au = await synthesizeSrt(tr.translated_srt_path, j.work_dir);
+            setAudio(au);
           }
         } else {
           const sc = await summarizeScript(t.srt_path, j.work_dir, j.meta.title, j.meta.chapters);
@@ -879,15 +904,45 @@ export default function Home() {
               </span>
             </label>
 
+            <label className="settings-label">話者分け（音声のみモード）</label>
+            <label
+              style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", cursor: "pointer" }}
+            >
+              <input
+                type="checkbox"
+                checked={settings.speaker_split}
+                onChange={(e) => changeSetting({ speaker_split: e.target.checked })}
+                style={{ marginTop: "0.2rem" }}
+              />
+              <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+                「音声のみ（全文）」で、対話をLLMが話者1/2に判定してナレーター/ゲストの2音声で読み分けます。
+                明確なインタビューほど有効。ラベル付けのぶん少し時間が増えます（既定: OFF）。
+              </span>
+            </label>
+
             <label className="settings-label">原語（翻訳元）</label>
             <select
               className="model-select"
               value={settings.source_lang}
               onChange={(e) => changeSetting({ source_lang: e.target.value })}
             >
-              {["en", "es", "fr", "de", "zh", "ko", "pt", "it", "ru"].map((l) => (
-                <option key={l} value={l}>
-                  {l}
+              {(
+                [
+                  ["en", "英語"],
+                  ["ar", "アラビア語"],
+                  ["he", "ヘブライ語"],
+                  ["es", "スペイン語"],
+                  ["fr", "フランス語"],
+                  ["de", "ドイツ語"],
+                  ["zh", "中国語"],
+                  ["ko", "韓国語"],
+                  ["pt", "ポルトガル語"],
+                  ["it", "イタリア語"],
+                  ["ru", "ロシア語"],
+                ] as const
+              ).map(([code, label]) => (
+                <option key={code} value={code}>
+                  {label}（{code}）
                 </option>
               ))}
             </select>
@@ -1194,6 +1249,14 @@ export default function Home() {
               disabled={busy || translationMode === "summary"}
             >
               吹き替え
+            </button>
+            <button
+              className={deliveryMode === "audio" ? "seg active" : "seg"}
+              onClick={() => setDeliveryMode("audio")}
+              disabled={busy || translationMode === "summary"}
+              title="全訳を尺調整なしで全文読み上げ（音声のみ・動画とは非同期）"
+            >
+              音声のみ（全文）
             </button>
           </div>
 
@@ -1560,19 +1623,20 @@ export default function Home() {
           </div>
           <div className="artifact-row">
             <span className="artifact-label">音声ファイル</span>
-            <code className="path">{audio.audio_path}</code>
+            <code className="path">{audio.audio_mp3_path ?? audio.audio_path}</code>
             <button
               className="start-btn"
-              onClick={() => void runShare(audio.audio_path)}
+              onClick={() => void runShare(audio.audio_mp3_path ?? audio.audio_path)}
               disabled={busy}
+              title={audio.audio_mp3_path ? "軽量な MP3 でスマホに送ります" : undefined}
             >
-              📱 QRで送る
+              📱 QRで送る{audio.audio_mp3_path ? "（MP3）" : ""}
             </button>
             {job && (
               <button
                 className="mini-btn"
                 onClick={() => void openWorkDir(job.work_dir).catch((e) => setError(String(e)))}
-                title="エクスプローラーで開く"
+                title="エクスプローラーで開く（WAV / MP3 両方あります）"
               >
                 📁 開く
               </button>
@@ -1625,6 +1689,15 @@ export default function Home() {
               吹き替え動画を生成
             </button>
             <span className="mode-note">元動画に日本語トラックを同期・多重化します</span>
+          </div>
+          <div className="artifact-row">
+            <span className="artifact-label">音声のみ（全文）</span>
+            <button className="start-btn" onClick={() => void runReadAloud()} disabled={busy}>
+              全文を読み上げ
+            </button>
+            <span className="mode-note">
+              尺調整なしで全訳を漏れなく読み上げ（動画とは非同期・音声のみ）
+            </span>
           </div>
         </section>
       )}

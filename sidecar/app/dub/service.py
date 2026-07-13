@@ -286,20 +286,24 @@ def _batch_shorten(
 
 
 def mux_video(video_path: str, ja_wav_path: str, out_path: str) -> None:
-    """Mux: Japanese track becomes the default audio; original kept as track 2."""
+    """Mux the Japanese dub as the ONLY audio track (replacing the original).
+
+    A second original-language audio track breaks mobile playback: phone
+    browsers ignore the "default" disposition and mix every audio track, so the
+    QR-delivered video played the original with the dub faint behind it. Keeping
+    a single Japanese track is also the expected output for a dub.
+    """
     cmd = [
         "ffmpeg", "-y",
         "-i", video_path,
         "-i", ja_wav_path,
         "-map", "0:v:0",
         "-map", "1:a:0",
-        "-map", "0:a:0?",
         "-c:v", "copy",
         "-c:a", "aac",
         "-b:a", "192k",
         "-metadata:s:a:0", "language=jpn",
         "-metadata:s:a:0", "title=日本語吹き替え",
-        "-disposition:a:0", "default",
         "-shortest",
         out_path,
     ]  # fmt: skip

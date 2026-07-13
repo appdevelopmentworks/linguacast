@@ -561,6 +561,8 @@ pub async fn tts_status(manager: State<'_, Arc<SidecarManager>>) -> Result<TtsSt
 pub struct SynthesizeResult {
     engine: String,
     audio_path: String,
+    #[serde(default)]
+    audio_mp3_path: Option<String>,
     line_count: u32,
 }
 
@@ -611,6 +613,89 @@ pub async fn synthesize_script(
         manager.base_url(),
         task_id,
         "日本語音声を合成中…".to_string(),
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(6 * 3600))
+        .build()
+        .map_err(|e| format!("failed to build HTTP client: {e}"))?;
+
+    let resp = client.post(&url).json(&body).send().await;
+    poller.abort();
+    let resp = resp.map_err(|e| format!("cannot reach sidecar: {e}"))?;
+
+    if resp.status().is_success() {
+        resp.json::<SynthesizeResult>()
+            .await
+            .map_err(|e| format!("invalid synthesize response: {e}"))
+    } else {
+        let status = resp.status();
+        let detail = resp.text().await.unwrap_or_default();
+        Err(format!("synthesis failed ({status}): {detail}"))
+    }
+}
+
+/// Read a translated SRT aloud in full (audio-only, no timing fit / no cut).
+#[tauri::command]
+pub async fn synthesize_srt(
+    app: tauri::AppHandle,
+    manager: State<'_, Arc<SidecarManager>>,
+    srt_path: String,
+    output_dir: String,
+) -> Result<SynthesizeResult, String> {
+    let settings = crate::config::load_settings(&app)?;
+
+    let _ = app.emit(
+        "linguacast://progress",
+        serde_json::json!({
+            "stage": "tts",
+            "message": "全文を日本語音声で読み上げ中…",
+        }),
+    );
+
+    let google_key = crate::secrets::get_secret(GOOGLE_TTS_KEY_NAME)?;
+    // Both voices available so speaker-split can alternate narrator/guest.
+    let voice_map = serde_json::json!({
+        "ナレーター": settings.narrator_voice,
+        "ゲスト": settings.guest_voice,
+    });
+    let edge_voice_map = serde_json::json!({
+        "ナレーター": settings.edge_narrator_voice,
+        "ゲスト": settings.edge_guest_voice,
+    });
+
+    // Speaker attribution (optional) runs a general LLM; keys travel loopback only.
+    let openrouter_key = crate::secrets::get_secret(OPENROUTER_KEY_NAME)?;
+    let groq_llm_key = if settings.cloud_llm_provider == "groq" {
+        crate::secrets::get_secret(GROQ_KEY_NAME)?
+    } else {
+        None
+    };
+
+    let task_id = new_task_id();
+    let url = format!("{}/tts/synthesize", manager.base_url());
+    let body = serde_json::json!({
+        "srt_path": srt_path,
+        "output_dir": output_dir,
+        "voice_map": voice_map,
+        "edge_voice_map": edge_voice_map,
+        "google_key": google_key,
+        "speaker_split": settings.speaker_split,
+        "model": settings.translation_model,
+        "openrouter_key": openrouter_key,
+        "openrouter_model": settings.openrouter_model,
+        "cloud_provider": settings.cloud_llm_provider,
+        "groq_key": groq_llm_key,
+        "groq_llm_model": settings.groq_llm_model,
+        "thinking": settings.thinking,
+        "task_id": task_id,
+    });
+
+    let poller = spawn_progress_poller(
+        &app,
+        manager.base_url(),
+        task_id,
+        "全文を日本語音声で読み上げ中…".to_string(),
     );
 
     let client = reqwest::Client::builder()

@@ -19,6 +19,8 @@ _LANG_NAMES = {
     "pt": "Portuguese",
     "it": "Italian",
     "ru": "Russian",
+    "ar": "Arabic",
+    "he": "Hebrew",
 }
 
 

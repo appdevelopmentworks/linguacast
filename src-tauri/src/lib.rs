@@ -55,6 +55,7 @@ pub fn run() {
             commands::summarize_script,
             commands::tts_status,
             commands::synthesize_script,
+            commands::synthesize_srt,
             commands::set_google_tts_key,
             commands::has_google_tts_key,
             commands::dub_video,

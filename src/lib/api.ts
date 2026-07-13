@@ -86,6 +86,7 @@ export type Settings = {
   cloud_llm_provider: string;
   groq_llm_model: string;
   thinking: boolean;
+  speaker_split: boolean;
 };
 
 export type TierInfo = { available: boolean; models: string[] };
@@ -137,6 +138,7 @@ export function edgeVoices(): Promise<EdgeVoice[]> {
 export type SynthesizeResult = {
   engine: string;
   audio_path: string;
+  audio_mp3_path: string | null;
   line_count: number;
 };
 
@@ -311,6 +313,11 @@ export function synthesizeScript(
   outputDir: string,
 ): Promise<SynthesizeResult> {
   return invoke<SynthesizeResult>("synthesize_script", { scriptJsonPath, outputDir });
+}
+
+/** Read a translated SRT aloud in full (audio-only, nothing shortened or cut). */
+export function synthesizeSrt(srtPath: string, outputDir: string): Promise<SynthesizeResult> {
+  return invoke<SynthesizeResult>("synthesize_srt", { srtPath, outputDir });
 }
 
 export function dubVideo(

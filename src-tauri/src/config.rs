@@ -135,6 +135,9 @@ pub struct Settings {
     /// summarization / dub never need it and thinking models (Qwen3 etc.) are
     /// 10-100x slower with it on. Applies to local and cloud tiers.
     pub thinking: bool,
+    /// Audio-only (full read) mode: LLM-label each segment as speaker 1/2 and
+    /// alternate the narrator/guest voices. Off by default (single narrator).
+    pub speaker_split: bool,
 }
 
 impl Default for Settings {
@@ -152,6 +155,7 @@ impl Default for Settings {
             cloud_llm_provider: "openrouter".to_string(),
             groq_llm_model: String::new(),
             thinking: false,
+            speaker_split: false,
         }
     }
 }

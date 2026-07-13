@@ -9,6 +9,7 @@ speaker role gets its own voice (FR-5/FR-8).
 from __future__ import annotations
 
 import os
+import subprocess
 
 from app.tts import voicevox
 from app.tts.cloud import edge_tts_backend, google_tts
@@ -112,7 +113,26 @@ def synthesize_lines(
     with open(out_path, "wb") as f:
         f.write(audio)
 
-    return {"audio_path": out_path, "line_count": len(lines), "engine": engine}
+    return {
+        "audio_path": out_path,
+        "audio_mp3_path": _encode_mp3(out_path),
+        "line_count": len(lines),
+        "engine": engine,
+    }
+
+
+def _encode_mp3(wav_path: str) -> str | None:
+    """Encode a smaller MP3 alongside the WAV (best-effort). MP3 is ~1/7 the size
+    and universally playable, so it is the better file to hand to a phone over QR."""
+    mp3_path = os.path.splitext(wav_path)[0] + ".mp3"
+    proc = subprocess.run(
+        ["ffmpeg", "-y", "-i", wav_path, "-codec:a", "libmp3lame", "-b:a", "192k", mp3_path],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return mp3_path if proc.returncode == 0 and os.path.exists(mp3_path) else None
 
 
 def _concat_with_pauses(blobs: list[bytes], pauses: list[float]) -> bytes:

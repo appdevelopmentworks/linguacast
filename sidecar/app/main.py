@@ -485,18 +485,34 @@ class SynthesizeRequest(BaseModel):
     lines: list[SynthesizeLine] | None = None
     # Alternative input: a script.json produced by /summarize/script.
     script_json_path: str | None = None
+    # Alternative input: a translated SRT — reads EVERY segment in full at a
+    # natural pace (no timing fit, nothing shortened or cut), for the audio-only
+    # "read the complete translation" mode. Single narrator voice.
+    srt_path: str | None = None
     # Speaker role -> VOICEVOX style id (e.g. {"ナレーター": 3, "ホスト": 3, "ゲスト": 2}).
     voice_map: dict[str, int] | None = None
     # Speaker role -> Edge TTS voice short name (e.g. ja-JP-NanamiNeural).
     edge_voice_map: dict[str, str] | None = None
     engine: str | None = None  # auto (None) | voicevox | edge | google
     google_key: str | None = None
+    # srt_path only: LLM-label each segment as speaker 1/2 and alternate the
+    # narrator/guest voices. Needs a general LLM (fields below).
+    speaker_split: bool = False
+    model: str | None = None
+    forced_tier: str | None = None
+    openrouter_key: str | None = None
+    openrouter_model: str | None = None
+    cloud_provider: str = "openrouter"
+    groq_key: str | None = None
+    groq_llm_model: str | None = None
+    thinking: bool = False
     task_id: str | None = None
 
 
 class SynthesizeResponse(BaseModel):
     engine: str
     audio_path: str
+    audio_mp3_path: str | None = None
     line_count: int
 
 
@@ -515,8 +531,48 @@ def tts_synthesize(req: SynthesizeRequest) -> SynthesizeResponse:
             raise HTTPException(status_code=404, detail=f"script not found: {req.script_json_path}")
         with open(req.script_json_path, encoding="utf-8") as f:
             lines = jsonlib.load(f)["lines"]
+    elif req.srt_path:
+        import srt as srtlib
+
+        if not os.path.exists(req.srt_path):
+            raise HTTPException(status_code=404, detail=f"SRT not found: {req.srt_path}")
+        with open(req.srt_path, encoding="utf-8") as f:
+            subs = srtlib.parse(f.read())
+        # Every segment, in full — no shortening or trimming.
+        texts = [t for sub in subs if (t := " ".join(sub.content.split()))]
+        if not texts:
+            raise HTTPException(status_code=422, detail="SRT has no readable text")
+
+        roles: list[str] | None = None
+        if req.speaker_split:
+            from app.translate import router as rt
+            from app.tts import speakers
+
+            try:
+                # Speaker attribution needs a general (instructable) model.
+                sp_backend = rt.resolve_backend(
+                    preferred_model=req.model,
+                    forced_tier=req.forced_tier,
+                    openrouter_key=req.openrouter_key,
+                    openrouter_model=req.openrouter_model,
+                    require_general=True,
+                    cloud_provider=req.cloud_provider,
+                    groq_key=req.groq_key,
+                    groq_model=req.groq_llm_model,
+                    thinking=req.thinking,
+                )
+                roles = speakers.label_speakers(texts, sp_backend)
+            except Exception:  # noqa: BLE001 — degrade to single narrator
+                roles = None
+
+        lines = [
+            {"speaker": roles[i] if roles else "ナレーター", "text": t}
+            for i, t in enumerate(texts)
+        ]
     else:
-        raise HTTPException(status_code=422, detail="either lines or script_json_path is required")
+        raise HTTPException(
+            status_code=422, detail="one of lines / script_json_path / srt_path is required"
+        )
 
     try:
         engine = tts_service.resolve_engine(req.engine, req.google_key)
