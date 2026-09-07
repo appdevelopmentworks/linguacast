@@ -113,27 +113,45 @@ struct FlatPlaylist {
     entries: Option<Vec<FlatEntry>>,
 }
 
-/// Add the fix for the most common yt-dlp failure to its raw error.
+/// yt-dlp update commands, by install method.
+const YTDLP_UPDATE_HINT: &str = "\u{20}\u{20}uv tool upgrade yt-dlp\n\
+     \u{20}\u{20}winget upgrade yt-dlp.yt-dlp   （winget で入れた場合）\n\
+     \u{20}\u{20}pip install -U yt-dlp          （pip で入れた場合）";
+
+/// Attach the likely fix to a raw yt-dlp error.
 ///
-/// YouTube changes break yt-dlp every few months. A stale binary typically still
-/// resolves metadata but 403s on the media stream, so the raw error ("HTTP Error
-/// 403: Forbidden") points nowhere useful. We pass `--no-warnings`, which also
-/// hides yt-dlp's own "your version is older than 90 days" notice — so say it here.
+/// Two failures dominate and they need opposite advice, and `--no-warnings`
+/// suppresses yt-dlp's own hints — so route on the message:
+/// - "Sign in to confirm you're not a bot": YouTube is challenging this IP;
+///   cookies are yt-dlp's documented way past it.
+/// - HTTP 403 on the media stream: usually a stale yt-dlp — metadata still
+///   resolves while the stream 403s.
 fn ytdlp_error(err: String) -> String {
-    format!(
-        "{err}\n\nヒント: yt-dlp が古い可能性があります（YouTube の仕様変更で数か月ごとに\
-         ダウンロードが失敗するようになります）。更新してから再実行してください:\n\
-         \u{20}\u{20}uv tool upgrade yt-dlp\n\
-         \u{20}\u{20}winget upgrade yt-dlp.yt-dlp   （winget で入れた場合）\n\
-         \u{20}\u{20}pip install -U yt-dlp          （pip で入れた場合）"
-    )
+    let hint = if err.contains("not a bot") || err.contains("Sign in to confirm") {
+        "YouTube から「bot ではないことを確認」を要求されています（短時間に多数アクセスすると\
+         一時的に発生します）。次のいずれかで回避できます:\n\
+         \u{20}\u{20}・⚙設定の「YouTube Cookie」でブラウザ、または cookies.txt を指定する\n\
+         \u{20}\u{20}・しばらく時間をおく（自動的に解除されることがあります）"
+            .to_string()
+    } else if err.contains("403") {
+        format!(
+            "yt-dlp が古い可能性があります（YouTube の仕様変更で数か月ごとに\
+             ダウンロードが失敗するようになります）。更新してから再実行してください:\n{YTDLP_UPDATE_HINT}"
+        )
+    } else {
+        format!(
+            "yt-dlp の更新、または ⚙設定の「YouTube Cookie」の設定で解決することがあります:\n{YTDLP_UPDATE_HINT}"
+        )
+    };
+    format!("{err}\n\nヒント: {hint}")
 }
 
 /// Fetch metadata only (no download). Fast enough to show info + routing.
-pub async fn fetch_metadata(url: &str) -> Result<MediaMeta, String> {
-    let out = run_capture("yt-dlp", ["-J", "--no-playlist", "--no-warnings", url])
-        .await
-        .map_err(ytdlp_error)?;
+pub async fn fetch_metadata(url: &str, cookies: &[String]) -> Result<MediaMeta, String> {
+    let mut args: Vec<String> = vec!["-J".into(), "--no-playlist".into(), "--no-warnings".into()];
+    args.extend_from_slice(cookies);
+    args.push(url.to_string());
+    let out = run_capture("yt-dlp", &args).await.map_err(ytdlp_error)?;
     let info: YtInfo =
         serde_json::from_str(&out).map_err(|e| format!("cannot parse yt-dlp metadata: {e}"))?;
 
@@ -160,12 +178,13 @@ pub async fn fetch_metadata(url: &str) -> Result<MediaMeta, String> {
 
 /// Full ingest + extract, persisting artifacts and emitting progress events.
 pub async fn prepare_media(app: &AppHandle, url: &str) -> Result<Job, String> {
+    let cookies = crate::config::cookie_args(&crate::config::load_settings(app)?);
     let id = Uuid::new_v4().to_string();
     let work_dir = jobs_root(app)?.join(&id);
     fs::create_dir_all(&work_dir).map_err(|e| format!("cannot create work dir: {e}"))?;
 
     emit_progress(app, &id, "ingest", "メタデータを取得しています…");
-    let meta = fetch_metadata(url).await?;
+    let meta = fetch_metadata(url, &cookies).await?;
 
     let mut job = Job {
         id: id.clone(),
@@ -177,7 +196,7 @@ pub async fn prepare_media(app: &AppHandle, url: &str) -> Result<Job, String> {
     save_job(&work_dir, &job)?;
 
     emit_progress(app, &id, "ingest", "音声をダウンロードしています…");
-    let source_audio = download_audio(url, &work_dir).await?;
+    let source_audio = download_audio(url, &work_dir, &cookies).await?;
     job.artifacts.source_audio = Some(source_audio.clone());
     job.stage = "ingested".to_string();
     save_job(&work_dir, &job)?;
@@ -276,22 +295,20 @@ pub fn is_audio_only_file(path: &str) -> bool {
 pub async fn list_channel_uploads(
     channel_url: &str,
     limit: Option<u32>,
+    cookies: &[String],
 ) -> Result<Vec<VideoEntry>, String> {
     let normalized = normalize_channel_url(channel_url);
     let end = limit.unwrap_or(DEFAULT_CHANNEL_LIMIT).max(1).to_string();
-    let out = run_capture(
-        "yt-dlp",
-        [
-            "-J",
-            "--flat-playlist",
-            "--no-warnings",
-            "--playlist-end",
-            end.as_str(),
-            normalized.as_str(),
-        ],
-    )
-    .await
-    .map_err(ytdlp_error)?;
+    let mut args: Vec<String> = vec![
+        "-J".into(),
+        "--flat-playlist".into(),
+        "--no-warnings".into(),
+        "--playlist-end".into(),
+        end,
+    ];
+    args.extend_from_slice(cookies);
+    args.push(normalized);
+    let out = run_capture("yt-dlp", &args).await.map_err(ytdlp_error)?;
 
     let playlist: FlatPlaylist =
         serde_json::from_str(&out).map_err(|e| format!("cannot parse channel listing: {e}"))?;
@@ -385,7 +402,11 @@ pub fn list_jobs(app: &AppHandle) -> Result<Vec<JobSummary>, String> {
 }
 
 /// Download the full video (merged mp4) for dub mode. Cached per job dir.
-pub async fn download_video(work_dir: &str, url: &str) -> Result<String, String> {
+pub async fn download_video(
+    work_dir: &str,
+    url: &str,
+    cookies: &[String],
+) -> Result<String, String> {
     let dir = Path::new(work_dir);
     let existing = dir.join("video.mp4");
     if existing.exists() {
@@ -394,23 +415,20 @@ pub async fn download_video(work_dir: &str, url: &str) -> Result<String, String>
 
     let out_tmpl = dir.join("video.%(ext)s");
     let out_tmpl_str = out_tmpl.to_string_lossy().into_owned();
-    run_capture(
-        "yt-dlp",
-        [
-            // Cap at 1080p to keep dub-mode downloads sane.
-            "-f",
-            "bv*[height<=1080]+ba/b[height<=1080]/b",
-            "--merge-output-format",
-            "mp4",
-            "--no-playlist",
-            "--no-warnings",
-            "-o",
-            out_tmpl_str.as_str(),
-            url,
-        ],
-    )
-    .await
-    .map_err(ytdlp_error)?;
+    let mut args: Vec<String> = vec![
+        // Cap at 1080p to keep dub-mode downloads sane.
+        "-f".into(),
+        "bv*[height<=1080]+ba/b[height<=1080]/b".into(),
+        "--merge-output-format".into(),
+        "mp4".into(),
+        "--no-playlist".into(),
+        "--no-warnings".into(),
+        "-o".into(),
+        out_tmpl_str,
+    ];
+    args.extend_from_slice(cookies);
+    args.push(url.to_string());
+    run_capture("yt-dlp", &args).await.map_err(ytdlp_error)?;
 
     if existing.exists() {
         Ok(existing.to_string_lossy().into_owned())
@@ -421,23 +439,20 @@ pub async fn download_video(work_dir: &str, url: &str) -> Result<String, String>
 
 // --- internals ---
 
-async fn download_audio(url: &str, work_dir: &Path) -> Result<String, String> {
+async fn download_audio(url: &str, work_dir: &Path, cookies: &[String]) -> Result<String, String> {
     let out_tmpl = work_dir.join("source.%(ext)s");
     let out_tmpl_str = out_tmpl.to_string_lossy().into_owned();
-    run_capture(
-        "yt-dlp",
-        [
-            "-f",
-            "bestaudio/best",
-            "--no-playlist",
-            "--no-warnings",
-            "-o",
-            out_tmpl_str.as_str(),
-            url,
-        ],
-    )
-    .await
-    .map_err(ytdlp_error)?;
+    let mut args: Vec<String> = vec![
+        "-f".into(),
+        "bestaudio/best".into(),
+        "--no-playlist".into(),
+        "--no-warnings".into(),
+        "-o".into(),
+        out_tmpl_str,
+    ];
+    args.extend_from_slice(cookies);
+    args.push(url.to_string());
+    run_capture("yt-dlp", &args).await.map_err(ytdlp_error)?;
 
     // The container extension varies (m4a/webm/opus); find the produced file.
     let produced = fs::read_dir(work_dir)

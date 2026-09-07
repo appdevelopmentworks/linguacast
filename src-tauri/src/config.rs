@@ -138,6 +138,14 @@ pub struct Settings {
     /// Audio-only (full read) mode: LLM-label each segment as speaker 1/2 and
     /// alternate the narrator/guest voices. Off by default (single narrator).
     pub speaker_split: bool,
+    /// Browser to read YouTube cookies from (yt-dlp `--cookies-from-browser`),
+    /// e.g. "chrome" / "firefox". Empty = do not send cookies. Used to get past
+    /// YouTube's "Sign in to confirm you're not a bot" check.
+    pub cookies_browser: String,
+    /// Path to a cookies.txt file (yt-dlp `--cookies`). Takes precedence over
+    /// `cookies_browser`; more reliable than reading a locked/encrypted browser
+    /// cookie store. Empty = unused.
+    pub cookies_file: String,
 }
 
 impl Default for Settings {
@@ -156,8 +164,30 @@ impl Default for Settings {
             groq_llm_model: String::new(),
             thinking: false,
             speaker_split: false,
+            cookies_browser: String::new(),
+            cookies_file: String::new(),
         }
     }
+}
+
+/// yt-dlp cookie flags built from settings.
+///
+/// YouTube increasingly answers unauthenticated requests with "Sign in to
+/// confirm you're not a bot"; passing cookies is yt-dlp's documented way past
+/// it. A cookies.txt file wins over a browser because reading a running
+/// browser's cookie store is unreliable (locked DB, app-bound encryption).
+/// Empty when the user configured neither — the default, which keeps the
+/// yt-dlp command line exactly as it was.
+pub fn cookie_args(settings: &Settings) -> Vec<String> {
+    let file = settings.cookies_file.trim();
+    if !file.is_empty() {
+        return vec!["--cookies".to_string(), file.to_string()];
+    }
+    let browser = settings.cookies_browser.trim();
+    if !browser.is_empty() {
+        return vec!["--cookies-from-browser".to_string(), browser.to_string()];
+    }
+    Vec::new()
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {

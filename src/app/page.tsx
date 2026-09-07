@@ -890,7 +890,12 @@ export default function Home() {
 
             <label className="settings-label">思考モード（thinking）</label>
             <label
-              style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", cursor: "pointer" }}
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "flex-start",
+                cursor: "pointer",
+              }}
             >
               <input
                 type="checkbox"
@@ -899,14 +904,19 @@ export default function Home() {
                 style={{ marginTop: "0.2rem" }}
               />
               <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>
-                推論（思考）を有効化します。翻訳・要約がやや丁寧になる場合がありますが、Qwen3 等の思考モデルでは
-                大幅に遅くなります。ローカル・クラウド両方に適用（既定: OFF）。
+                推論（思考）を有効化します。翻訳・要約がやや丁寧になる場合がありますが、Qwen3
+                等の思考モデルでは 大幅に遅くなります。ローカル・クラウド両方に適用（既定: OFF）。
               </span>
             </label>
 
             <label className="settings-label">話者分け（音声のみモード）</label>
             <label
-              style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", cursor: "pointer" }}
+              style={{
+                display: "flex",
+                gap: "0.5rem",
+                alignItems: "flex-start",
+                cursor: "pointer",
+              }}
             >
               <input
                 type="checkbox"
@@ -919,6 +929,46 @@ export default function Home() {
                 明確なインタビューほど有効。ラベル付けのぶん少し時間が増えます（既定: OFF）。
               </span>
             </label>
+
+            <label className="settings-label">YouTube Cookie（bot 判定の回避）</label>
+            <select
+              className="model-select"
+              value={settings.cookies_browser}
+              onChange={(e) => changeSetting({ cookies_browser: e.target.value })}
+            >
+              {(
+                [
+                  ["", "使わない（既定）"],
+                  ["chrome", "Chrome"],
+                  ["edge", "Edge"],
+                  ["brave", "Brave"],
+                  ["vivaldi", "Vivaldi"],
+                  ["firefox", "Firefox"],
+                  ["chromium", "Chromium"],
+                  ["opera", "Opera"],
+                  ["safari", "Safari（macOS）"],
+                ] as const
+              ).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <input
+              className="url-input key-input"
+              type="text"
+              placeholder="cookies.txt のパス（任意・指定するとブラウザより優先）"
+              value={settings.cookies_file}
+              onChange={(e) => changeSetting({ cookies_file: e.target.value })}
+            />
+            <span style={{ fontSize: "0.85rem", opacity: 0.8 }}>
+              YouTube から「bot ではないことを確認」を求められてダウンロードできないときに使います。
+              Cookie はこの PC 内で yt-dlp に渡すだけで、外部には送信しません。
+              <br />※ Windows の Chrome 系（Chrome / Edge / Brave /
+              Vivaldi）は、ブラウザを完全終了しないと
+              読めない・失敗することがあります。うまくいかない場合は、拡張機能で cookies.txt
+              を書き出してそのパスを指定するのが確実です。
+            </span>
 
             <label className="settings-label">原語（翻訳元）</label>
             <select

@@ -87,6 +87,8 @@ export type Settings = {
   groq_llm_model: string;
   thinking: boolean;
   speaker_split: boolean;
+  cookies_browser: string;
+  cookies_file: string;
 };
 
 export type TierInfo = { available: boolean; models: string[] };

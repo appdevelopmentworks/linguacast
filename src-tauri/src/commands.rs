@@ -94,8 +94,12 @@ pub async fn check_dependencies() -> crate::deps::DependencyReport {
 }
 
 #[tauri::command]
-pub async fn fetch_metadata(url: String) -> Result<crate::media::MediaMeta, String> {
-    crate::media::fetch_metadata(&url).await
+pub async fn fetch_metadata(
+    app: tauri::AppHandle,
+    url: String,
+) -> Result<crate::media::MediaMeta, String> {
+    let cookies = crate::config::cookie_args(&crate::config::load_settings(&app)?);
+    crate::media::fetch_metadata(&url, &cookies).await
 }
 
 #[tauri::command]
@@ -121,10 +125,12 @@ pub fn list_jobs(app: tauri::AppHandle) -> Result<Vec<crate::media::JobSummary>,
 
 #[tauri::command]
 pub async fn list_channel_uploads(
+    app: tauri::AppHandle,
     channel_url: String,
     limit: Option<u32>,
 ) -> Result<Vec<crate::media::VideoEntry>, String> {
-    crate::media::list_channel_uploads(&channel_url, limit).await
+    let cookies = crate::config::cookie_args(&crate::config::load_settings(&app)?);
+    crate::media::list_channel_uploads(&channel_url, limit, &cookies).await
 }
 
 #[tauri::command]
@@ -769,7 +775,14 @@ pub async fn dub_video(
                 "message": "元動画をダウンロード中…（初回のみ）",
             }),
         );
-        Some(crate::media::download_video(&work_dir, &source_url).await?)
+        Some(
+            crate::media::download_video(
+                &work_dir,
+                &source_url,
+                &crate::config::cookie_args(&settings),
+            )
+            .await?,
+        )
     };
 
     let _ = app.emit(
