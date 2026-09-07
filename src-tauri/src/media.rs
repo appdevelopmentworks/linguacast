@@ -113,9 +113,27 @@ struct FlatPlaylist {
     entries: Option<Vec<FlatEntry>>,
 }
 
+/// Add the fix for the most common yt-dlp failure to its raw error.
+///
+/// YouTube changes break yt-dlp every few months. A stale binary typically still
+/// resolves metadata but 403s on the media stream, so the raw error ("HTTP Error
+/// 403: Forbidden") points nowhere useful. We pass `--no-warnings`, which also
+/// hides yt-dlp's own "your version is older than 90 days" notice — so say it here.
+fn ytdlp_error(err: String) -> String {
+    format!(
+        "{err}\n\nヒント: yt-dlp が古い可能性があります（YouTube の仕様変更で数か月ごとに\
+         ダウンロードが失敗するようになります）。更新してから再実行してください:\n\
+         \u{20}\u{20}uv tool upgrade yt-dlp\n\
+         \u{20}\u{20}winget upgrade yt-dlp.yt-dlp   （winget で入れた場合）\n\
+         \u{20}\u{20}pip install -U yt-dlp          （pip で入れた場合）"
+    )
+}
+
 /// Fetch metadata only (no download). Fast enough to show info + routing.
 pub async fn fetch_metadata(url: &str) -> Result<MediaMeta, String> {
-    let out = run_capture("yt-dlp", ["-J", "--no-playlist", "--no-warnings", url]).await?;
+    let out = run_capture("yt-dlp", ["-J", "--no-playlist", "--no-warnings", url])
+        .await
+        .map_err(ytdlp_error)?;
     let info: YtInfo =
         serde_json::from_str(&out).map_err(|e| format!("cannot parse yt-dlp metadata: {e}"))?;
 
@@ -272,7 +290,8 @@ pub async fn list_channel_uploads(
             normalized.as_str(),
         ],
     )
-    .await?;
+    .await
+    .map_err(ytdlp_error)?;
 
     let playlist: FlatPlaylist =
         serde_json::from_str(&out).map_err(|e| format!("cannot parse channel listing: {e}"))?;
@@ -390,7 +409,8 @@ pub async fn download_video(work_dir: &str, url: &str) -> Result<String, String>
             url,
         ],
     )
-    .await?;
+    .await
+    .map_err(ytdlp_error)?;
 
     if existing.exists() {
         Ok(existing.to_string_lossy().into_owned())
@@ -416,7 +436,8 @@ async fn download_audio(url: &str, work_dir: &Path) -> Result<String, String> {
             url,
         ],
     )
-    .await?;
+    .await
+    .map_err(ytdlp_error)?;
 
     // The container extension varies (m4a/webm/opus); find the produced file.
     let produced = fs::read_dir(work_dir)
